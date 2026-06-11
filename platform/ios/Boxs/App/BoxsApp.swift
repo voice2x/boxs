@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct BoxsApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var appColors: AppColors = .light
 
     var body: some Scene {
