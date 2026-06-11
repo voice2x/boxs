@@ -135,7 +135,7 @@
 		BEA16CB03DA0F92157B31DB2 /* Todo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Todo.swift; sourceTree = "<group>"; };
 		C59669D2C8D61657F8ADAB2E /* AppTypography.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTypography.swift; sourceTree = "<group>"; };
 		C737A7CBDA7CB629C5CC9F73 /* Categories.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Categories.swift; sourceTree = "<group>"; };
-		C92604E56C861423B4FD7B4C /* Boxs.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Boxs.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C92604E56C861423B4FD7B4C /* Boxs.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Boxs.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CB6E02CF9DD79B7A34DD247B /* ExpenseStatsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpenseStatsViewModel.swift; sourceTree = "<group>"; };
 		CC2A2BDCEA207545463378AF /* VoiceButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceButton.swift; sourceTree = "<group>"; };
 		D0528857DFA15E33641D6C59 /* ResponseParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResponseParser.swift; sourceTree = "<group>"; };
@@ -475,9 +475,6 @@
 					DB9A031515E722181B59BE8E = {
 						DevelopmentTeam = "";
 					};
-					F9A4BDC3A2E452B231001CDD = {
-						DevelopmentTeam = "";
-					};
 				};
 			};
 			buildConfigurationList = 26CBC11D21CEC82684604005 /* Build configuration list for PBXProject "Boxs" */;
@@ -490,7 +487,7 @@
 			mainGroup = 404DC431A320D3AC9E284BE4;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				34F86ED8CCD4FC64088D9EC1 /* XCRemoteSwiftPackageReference "GRDB.swift" */,
+				34F86ED8CCD4FC64088D9EC1 /* XCRemoteSwiftPackageReference "GRDB" */,
 				F3248DEAB01C6439FB4DAE1D /* XCRemoteSwiftPackageReference "Starscream" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -617,6 +614,7 @@
 				CODE_SIGN_ENTITLEMENTS = Boxs/Boxs.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8HW3N9LNAP;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Boxs/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -702,6 +700,7 @@
 				CODE_SIGN_ENTITLEMENTS = Boxs/Boxs.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8HW3N9LNAP;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Boxs/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -883,7 +882,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		34F86ED8CCD4FC64088D9EC1 /* XCRemoteSwiftPackageReference "GRDB.swift" */ = {
+		34F86ED8CCD4FC64088D9EC1 /* XCRemoteSwiftPackageReference "GRDB" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/groue/GRDB.swift";
 			requirement = {
@@ -909,7 +908,7 @@
 		};
 		943E878F09D4CC9812CBC2B2 /* GRDB */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 34F86ED8CCD4FC64088D9EC1 /* XCRemoteSwiftPackageReference "GRDB.swift" */;
+			package = 34F86ED8CCD4FC64088D9EC1 /* XCRemoteSwiftPackageReference "GRDB" */;
 			productName = GRDB;
 		};
 /* End XCSwiftPackageProductDependency section */

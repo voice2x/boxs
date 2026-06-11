@@ -19,7 +19,9 @@ struct TodoListPage: View {
             } else {
                 todoList
             }
+            Spacer()
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(c.background)
         .navigationTitle("待办")
         .navigationBarTitleDisplayMode(.inline)

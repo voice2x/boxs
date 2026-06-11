@@ -24,7 +24,10 @@ struct HabitCalendarPage: View {
 
             // 日历热力图
             calendarGrid
+
+            Spacer()
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(c.background)
         .navigationTitle("打卡")
         .navigationBarTitleDisplayMode(.inline)

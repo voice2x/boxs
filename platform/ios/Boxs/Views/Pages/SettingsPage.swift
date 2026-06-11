@@ -9,7 +9,7 @@ struct SettingsPage: View {
     @Environment(\.appColors) private var c
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
             // 用户区域
             userSection
 
@@ -17,7 +17,10 @@ struct SettingsPage: View {
 
             // 设置列表
             settingsList
+
+            Spacer()
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(c.background)
         .navigationTitle("设置")
         .navigationBarTitleDisplayMode(.inline)
