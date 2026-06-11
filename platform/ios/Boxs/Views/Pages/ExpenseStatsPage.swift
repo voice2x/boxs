@@ -7,7 +7,7 @@ struct ExpenseStatsPage: View {
     @Environment(\.appColors) private var c
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
             // 总览
             overviewSection
 
@@ -25,7 +25,10 @@ struct ExpenseStatsPage: View {
 
             // 每日趋势
             dailyTrend
+
+            Spacer()
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(c.background)
         .navigationTitle("记账统计")
         .navigationBarTitleDisplayMode(.inline)
