@@ -31,6 +31,7 @@ final class NLUViewModel {
             self.nluResult = result
             self.showConfirmSheet = true
         } catch {
+            print("[NLUViewModel] processText 失败: \(error)")
             self.errorMessage = error.localizedDescription
         }
         self.isProcessing = false
@@ -80,6 +81,7 @@ final class NLUViewModel {
             nluResult = nil
             recognizedText = nil
         } catch {
+            print("[NLUViewModel] confirmAndSave 保存失败: \(error)")
             errorMessage = "保存失败: \(error.localizedDescription)"
         }
     }
