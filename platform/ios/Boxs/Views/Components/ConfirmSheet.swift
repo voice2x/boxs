@@ -33,6 +33,14 @@ struct ConfirmSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
+            // 错误提示
+            if let error = viewModel.errorMessage {
+                Text(error)
+                    .font(.system(size: 12))
+                    .foregroundStyle(c.expense)
+                    .padding(.horizontal, S.page)
+            }
+
             // 按钮
             HStack(spacing: S.row) {
                 Button(action: { viewModel.dismiss() }) {

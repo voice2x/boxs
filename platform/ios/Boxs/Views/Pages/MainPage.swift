@@ -195,11 +195,11 @@ struct MainPage: View {
                 Spacer()
 
                 Button("识别") {
+                    let text = inputText
+                    showTextInput = false
+                    inputText = ""
                     Task {
-                        await nluViewModel.processText(inputText)
-                        showTextInput = false
-                        inputText = ""
-                        showConfirmSheet = true
+                        await nluViewModel.processText(text)
                     }
                 }
                 .buttonStyle(ActionButtonStyle(kind: .primary))

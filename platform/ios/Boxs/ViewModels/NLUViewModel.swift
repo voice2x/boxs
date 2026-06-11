@@ -18,72 +18,69 @@ final class NLUViewModel {
 
     // MARK: - 处理文字输入
 
-    func processText(_ text: String) {
-        guard !text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+    func processText(_ text: String) async {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
 
         isProcessing = true
         errorMessage = nil
-        recognizedText = text
+        recognizedText = trimmed
 
-        Task {
-            do {
-                let result = try await orchestrator.process(text)
-                self.nluResult = result
-                self.showConfirmSheet = true
-            } catch {
-                self.errorMessage = error.localizedDescription
-            }
-            self.isProcessing = false
+        do {
+            let result = try await orchestrator.process(trimmed)
+            self.nluResult = result
+            self.showConfirmSheet = true
+        } catch {
+            self.errorMessage = error.localizedDescription
         }
+        self.isProcessing = false
     }
 
     // MARK: - 处理语音识别结果
 
-    func processSTTResult(_ text: String) {
+    func processSTTResult(_ text: String) async {
         guard !text.isEmpty else {
             errorMessage = "语音识别结果为空"
             return
         }
-        processText(text)
+        await processText(text)
     }
 
     // MARK: - 确认保存
 
-    func confirmAndSave() {
+    func confirmAndSave() async {
         guard let result = nluResult else { return }
 
-        Task {
-            do {
-                let db = try AppDatabase.shared.getDB()
+        do {
+            let db = try AppDatabase.shared.getDB()
 
-                switch result.intent {
-                case "expense":
-                    try await saveExpense(result, db: db)
-                case "habit_checkin":
-                    try await saveHabitCheckin(result, db: db)
-                case "todo_add":
-                    try await saveTodo(result, db: db)
-                case "multiple":
-                    if let items = result.items {
-                        for item in items {
-                            switch item.intent {
-                            case "expense": try await saveExpense(item, db: db)
-                            case "habit_checkin": try await saveHabitCheckin(item, db: db)
-                            case "todo_add": try await saveTodo(item, db: db)
-                            default: break
-                            }
+            switch result.intent {
+            case "expense":
+                try await saveExpense(result, db: db)
+            case "habit_checkin":
+                try await saveHabitCheckin(result, db: db)
+            case "todo_add":
+                try await saveTodo(result, db: db)
+            case "multiple":
+                if let items = result.items {
+                    for item in items {
+                        switch item.intent {
+                        case "expense": try await saveExpense(item, db: db)
+                        case "habit_checkin": try await saveHabitCheckin(item, db: db)
+                        case "todo_add": try await saveTodo(item, db: db)
+                        default: break
                         }
                     }
-                default:
-                    break
                 }
-
-                showConfirmSheet = false
-                nluResult = nil
-                recognizedText = nil
-            } catch {
-                errorMessage = "保存失败: \(error.localizedDescription)"
+            default:
+                break
             }
+
+            showConfirmSheet = false
+            nluResult = nil
+            recognizedText = nil
+        } catch {
+            errorMessage = "保存失败: \(error.localizedDescription)"
         }
     }
 
@@ -97,10 +94,10 @@ final class NLUViewModel {
             category: result.category ?? "其他",
             note: result.note,
             merchant: result.merchant,
-            source: "voice"
+            source: "text"
         )
         try await db.write { db in
-            try record.save(db)
+            try record.insert(db)
         }
     }
 
@@ -115,7 +112,7 @@ final class NLUViewModel {
         if let habit {
             let record = HabitRecord.create(habitId: habit.id, value: result.habitValue)
             try await db.write { db in
-                try record.save(db)
+                try record.insert(db)
             }
         }
     }
@@ -123,7 +120,7 @@ final class NLUViewModel {
     private func saveTodo(_ result: NLUResult, db: DatabaseQueue) async throws {
         let record = TodoRecord.create(content: result.content ?? "")
         try await db.write { db in
-            try record.save(db)
+            try record.insert(db)
         }
     }
 
