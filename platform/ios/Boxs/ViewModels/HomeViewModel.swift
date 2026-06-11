@@ -1,11 +1,15 @@
 import Foundation
 import Observation
 import GRDB
+import os.log
 
 /// 主页 ViewModel — 概览数据 + 记录列表
 @Observable
 @MainActor
 final class HomeViewModel {
+
+    private let logger = Logger(subsystem: "com.boxs.app", category: "HomeViewModel")
+
     // MARK: - 概览数据
     var todayTodoCount: Int = 0
     var todayTodoCompleted: Int = 0
@@ -58,7 +62,7 @@ final class HomeViewModel {
 
             try await loadRecentRecords(db: db)
         } catch {
-            print("加载主页数据失败: \(error)")
+            logger.error("加载主页数据失败: \(error)")
         }
     }
 
