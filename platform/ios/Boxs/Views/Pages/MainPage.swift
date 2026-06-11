@@ -5,7 +5,6 @@ import SwiftUI
 struct MainPage: View {
     @State private var viewModel = HomeViewModel()
     @State private var nluViewModel = NLUViewModel()
-    @State private var showConfirmSheet = false
     @State private var inputText = ""
     @State private var showTextInput = false
 
@@ -42,8 +41,14 @@ struct MainPage: View {
             }
         }
         .overlay {
-            HalfSheet(isPresented: $showConfirmSheet) {
+            HalfSheet(isPresented: $nluViewModel.showConfirmSheet) {
                 ConfirmSheet(viewModel: nluViewModel)
+            }
+        }
+        .onChange(of: nluViewModel.showConfirmSheet) { oldValue, newValue in
+            // ConfirmSheet 关闭时刷新主页数据
+            if oldValue == true && newValue == false {
+                Task { await viewModel.loadData() }
             }
         }
         .alert("提示", isPresented: .constant(nluViewModel.errorMessage != nil)) {
