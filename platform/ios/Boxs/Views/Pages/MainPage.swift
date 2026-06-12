@@ -180,7 +180,7 @@ struct MainPage: View {
     // MARK: - 文字输入弹窗
 
     private var textInputSheet: some View {
-        VStack(spacing: S.section) {
+        VStack(alignment: .leading, spacing: S.section) {
             Text("输入记录")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(c.textPrimary)
@@ -188,7 +188,6 @@ struct MainPage: View {
             TextField("例如：午饭35", text: $inputText)
                 .textFieldStyle(.roundedBorder)
                 .font(.system(size: 15))
-                .padding(.horizontal, S.page)
 
             HStack {
                 Button("取消") {
@@ -210,11 +209,12 @@ struct MainPage: View {
                 .buttonStyle(ActionButtonStyle(kind: .primary))
                 .disabled(inputText.isEmpty)
             }
-            .padding(.horizontal, S.page)
-            .padding(.bottom, 20)
+
+            Spacer()
         }
-        .padding(.top, 20)
-        .presentationDetents([.medium])
+        .padding(S.page)
+        .frame(maxWidth: .infinity)
+        .presentationDetents([.height(200)])
     }
 }
 
