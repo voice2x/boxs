@@ -12,6 +12,14 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         } catch {
             assertionFailure("数据库初始化失败: \(error)")
         }
+
+        // 已登录时触发初始同步
+        if TokenManager.shared.isLoggedIn {
+            Task {
+                await SyncService.shared.syncAll()
+            }
+        }
+
         return true
     }
 }

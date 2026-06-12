@@ -109,7 +109,8 @@ final class NLUViewModel {
 
     // MARK: - 保存方法
 
-    private func saveExpense(_ result: NLUResult, db: DatabaseQueue) async throws {
+    @discardableResult
+    private func saveExpense(_ result: NLUResult, db: DatabaseQueue) async throws -> ExpenseRecord {
         let amountCents = Int((result.amount ?? 0) * 100)
         let record = ExpenseRecord.create(
             type: "expense",
@@ -123,6 +124,8 @@ final class NLUViewModel {
         try await db.write { db in
             try record.insert(db)
         }
+        Task { await SyncService.shared.pushExpense(record) }
+        return record
     }
 
     private func saveHabitCheckin(_ result: NLUResult, db: DatabaseQueue) async throws {
@@ -139,17 +142,21 @@ final class NLUViewModel {
             try await db.write { db in
                 try record.insert(db)
             }
+            Task { await SyncService.shared.pushHabitCheckin(record) }
         } else {
             logger.warning("saveHabitCheckin: 未找到习惯定义 name=\(habitName)")
         }
     }
 
-    private func saveTodo(_ result: NLUResult, db: DatabaseQueue) async throws {
+    @discardableResult
+    private func saveTodo(_ result: NLUResult, db: DatabaseQueue) async throws -> TodoRecord {
         let record = TodoRecord.create(content: result.content ?? "")
         logger.debug("saveTodo: id=\(record.id), content=\(record.content)")
         try await db.write { db in
             try record.insert(db)
         }
+        Task { await SyncService.shared.pushTodo(record) }
+        return record
     }
 
     // MARK: - 取消

@@ -22,16 +22,22 @@ final class HabitViewModel {
         isLoading = true
         Task {
             defer { isLoading = false }
+
+            // 从后端同步习惯数据
+            if TokenManager.shared.isLoggedIn {
+                await SyncService.shared.syncHabits()
+            }
+
             do {
                 let db = try AppDatabase.shared.getDB()
-                let definitions: [HabitDefinition] = try db.read { db in
+                let definitions: [HabitDefinition] = try await db.read { db in
                     try HabitDefinition
                         .filter(Column("isActive") == true)
                         .order(Column("sortOrder").asc)
                         .fetchAll(db)
                 }
                 let today = Calendar.current.startOfDay(for: Date())
-                let todayRecords: [HabitRecord] = try db.read { db in
+                let todayRecords: [HabitRecord] = try await db.read { db in
                     try HabitRecord
                         .filter(Column("recordDate") >= today)
                         .fetchAll(db)
@@ -54,6 +60,7 @@ final class HabitViewModel {
                 try db.write { db in
                     try record.save(db)
                 }
+                Task { await SyncService.shared.pushHabitCheckin(record) }
                 loadHabits()
             } catch {
                 print("打卡失败: \(error)")
@@ -69,7 +76,7 @@ final class HabitViewModel {
                 let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: month))!
                 let range = calendar.range(of: .day, in: .month, for: month)!
 
-                let records: [HabitRecord] = try db.read { db in
+                let records: [HabitRecord] = try await db.read { db in
                     try HabitRecord
                         .filter(Column("habitId") == habitId)
                         .filter(Column("recordDate") >= startOfMonth)

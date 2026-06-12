@@ -28,9 +28,15 @@ final class TodoViewModel {
         isLoading = true
         Task {
             defer { isLoading = false }
+
+            // 从后端同步待办数据
+            if TokenManager.shared.isLoggedIn {
+                await SyncService.shared.syncTodos()
+            }
+
             do {
                 let db = try AppDatabase.shared.getDB()
-                let records: [TodoRecord] = try db.read { db in
+                let records: [TodoRecord] = try await db.read { db in
                     try TodoRecord
                         .filter(Column("isDeleted") == false)
                         .order(Column("createdAt").desc)
@@ -54,6 +60,7 @@ final class TodoViewModel {
                         try record.save(db)
                     }
                 }
+                Task { await SyncService.shared.pushTodoComplete(id: id) }
                 loadTodos()
             } catch {
                 print("完成待办失败: \(error)")
@@ -72,6 +79,7 @@ final class TodoViewModel {
                         try record.save(db)
                     }
                 }
+                Task { await SyncService.shared.pushTodoDelete(id: id) }
                 loadTodos()
             } catch {
                 print("删除待办失败: \(error)")

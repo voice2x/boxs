@@ -27,6 +27,12 @@ final class HomeViewModel {
     func loadData() async {
         isLoading = true
         defer { isLoading = false }
+
+        // 从后端同步数据
+        if TokenManager.shared.isLoggedIn {
+            await SyncService.shared.syncAll()
+        }
+
         do {
             let db = try AppDatabase.shared.getDB()
             let calendar = Calendar.current
