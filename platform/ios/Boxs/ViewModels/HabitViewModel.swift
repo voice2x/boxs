@@ -60,7 +60,7 @@ final class HabitViewModel {
                 try db.write { db in
                     try record.save(db)
                 }
-                Task { await SyncService.shared.pushHabitCheckin(record) }
+                Task { if TokenManager.shared.isLoggedIn { await SyncService.shared.pushHabitCheckin(record) } }
                 loadHabits()
             } catch {
                 print("打卡失败: \(error)")
