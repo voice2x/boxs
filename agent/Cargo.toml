@@ -24,3 +24,11 @@ dotenvy = "0.15"
 chrono = "0.4"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# HTTP layer for the custom POST /api/chat route. Version pinned to match the
+# axum adk-rust already pulls in transitively (see `cargo tree -p axum`).
+axum = "0.8"
+futures = "0.3"
+
+[dev-dependencies]
+# Used by the type/helper unit tests' imports; keeps the test surface explicit.
+tower = "0.5"
