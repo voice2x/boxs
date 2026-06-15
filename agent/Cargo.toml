@@ -28,7 +28,11 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # axum adk-rust already pulls in transitively (see `cargo tree -p axum`).
 axum = "0.8"
 futures = "0.3"
-
-[dev-dependencies]
-# Used by the type/helper unit tests' imports; keeps the test surface explicit.
+# `tower::ServiceBuilder` composes the per-route layers on /api/chat.
+# Promoted from a dev-dependency once the chat router started using it for real.
 tower = "0.5"
+# `tower_http::timeout::TimeoutLayer` bounds a stuck local LLM. Preferred over
+# `tower`'s timeout because the HTTP variant maps a timeout to a 408 response,
+# keeping the service error `Infallible` (axum's `Router::layer` requirement).
+# Already a transitive dep via adk-server; listed explicitly for direct use.
+tower-http = { version = "0.6", features = ["timeout"] }

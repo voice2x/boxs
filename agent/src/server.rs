@@ -7,20 +7,30 @@
 //! `POST /api/chat` route on top of the framework app: it creates a fresh
 //! session per request, runs the agent one-shot, concatenates all text parts,
 //! and replies with `{"reply": "..."}`.
+//!
+//! The session is deleted after every turn (success or error) so the
+//! stateless one-shot intent holds and `InMemorySessionService` cannot grow
+//! unbounded. The chat route also carries its own request timeout and body
+//! limit, since `Launcher::build_app()` applies those layers only to its own
+//! routes — a merged-in route would otherwise hang indefinitely on a stuck
+//! local LLM.
 
 use std::sync::Arc;
+use std::time::Duration;
 
-use adk_rust::session::{CreateRequest, InMemorySessionService, SessionService};
-use adk_rust::{Agent, Content, Launcher, Part, SessionId, UserId};
+use adk_rust::session::{CreateRequest, DeleteRequest, InMemorySessionService, SessionService};
+use adk_rust::{Agent, Content, Launcher, SessionId, UserId};
 use adk_rust::runner::Runner;
 use axum::{
     Json, Router,
-    extract::State,
+    extract::{DefaultBodyLimit, State},
     http::StatusCode,
     routing::post,
 };
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
+use tower::ServiceBuilder;
+use tower_http::timeout::TimeoutLayer;
 
 // ============================================================
 // Request / response types
@@ -49,6 +59,15 @@ pub struct ChatState {
 /// Fallback reply when the agent emits no text (after trimming).
 const EMPTY_REPLY: &str = "（无回复）";
 
+/// Per-request timeout for a single `/api/chat` turn. Comfortably exceeds one
+/// local-LLM turn while bounding a stuck model so the handler cannot hang
+/// forever. Matches the framework's own default.
+const CHAT_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// Maximum accepted request body for `/api/chat`. A chat message should never
+/// approach this; it exists purely as a guard against pathological inputs.
+const CHAT_BODY_LIMIT: usize = 1024 * 1024; // 1 MiB
+
 /// Trim a model reply and substitute a fallback when it ends up empty.
 ///
 /// Some local models surround their output with stray whitespace/newlines;
@@ -71,7 +90,8 @@ fn normalize_reply(raw: &str) -> String {
 ///
 /// Creates a fresh session, builds a `Runner`, runs the message to
 /// completion, and concatenates every `Part::Text` fragment from the event
-/// stream into the reply. Any failure surfaces as HTTP 500.
+/// stream into the reply. The session is ALWAYS deleted before returning —
+/// on both success and error — so no per-request state leaks across turns.
 async fn chat(
     State(state): State<Arc<ChatState>>,
     Json(req): Json<ChatRequest>,
@@ -93,26 +113,72 @@ async fn chat(
         })
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("create session: {e}")))?;
-    let session_id = session.id().to_string();
+    // Capture the raw id before any typed-Id validation can fail, so cleanup
+    // below can address the session even if the run errors out early.
+    let session_id_raw = session.id().to_string();
 
-    // 2. Build a runner bound to this agent + session service.
+    // 2. Run the turn. Every code path that returns from this block is funneled
+    //    through a single result so the outer handler can always reach `delete`.
+    let result = run_turn(
+        agent,
+        session_service,
+        app_name,
+        user_id,
+        &session_id_raw,
+        &req.message,
+    )
+    .await;
+
+    // 3. Always delete the per-request session (best-effort): success or error,
+    //    the session must not linger in `InMemorySessionService`. A failed
+    //    delete is logged but never fails the request — the reply (or error)
+    //    already in hand is what we surface to the client.
+    if let Err(e) = session_service
+        .delete(DeleteRequest {
+            app_name: app_name.clone(),
+            user_id: user_id.clone(),
+            session_id: session_id_raw.clone(),
+        })
+        .await
+    {
+        tracing::warn!(error = %e, "failed to delete /api/chat session (leaked until process restart)");
+    }
+
+    result
+}
+
+/// Run a single agent turn against an already-created session.
+///
+/// Returns the reply on success or an HTTP error tuple on failure. Split out
+/// from [`chat`] so the caller can unconditionally delete the session after
+/// this returns, regardless of the outcome — this is what guarantees the
+/// "every path reaches delete" invariant.
+async fn run_turn(
+    agent: &Arc<dyn Agent>,
+    session_service: &Arc<dyn SessionService>,
+    app_name: &str,
+    user_id: &str,
+    session_id_raw: &str,
+    message: &str,
+) -> Result<Json<ChatResponse>, (StatusCode, String)> {
+    // Build a runner bound to this agent + session service.
     let runner = Runner::builder()
-        .app_name(app_name.clone())
+        .app_name(app_name.to_string())
         .agent(agent.clone())
         .session_service(session_service.clone())
         .build()
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("build runner: {e:?}")))?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("build runner: {e}")))?;
 
-    // 3. Run one turn, draining the event stream.
-    let user_content = Content::new("user").with_text(&req.message);
-    let user_id = UserId::new(user_id.clone())
+    // Run one turn, draining the event stream.
+    let user_content = Content::new("user").with_text(message);
+    let user_id = UserId::new(user_id.to_string())
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("invalid user id: {e}")))?;
-    let session_id = SessionId::new(session_id)
+    let session_id = SessionId::new(session_id_raw.to_string())
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("invalid session id: {e}")))?;
     let mut events = runner
         .run(user_id, session_id, user_content)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("start run: {e:?}")))?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("start run: {e}")))?;
 
     let mut raw = String::new();
     while let Some(event) = events.next().await {
@@ -128,7 +194,7 @@ async fn chat(
         };
         if let Some(content) = &event.llm_response.content {
             for part in &content.parts {
-                if let Some(text) = part_text(part) {
+                if let Some(text) = part.text() {
                     raw.push_str(text);
                 }
             }
@@ -140,21 +206,19 @@ async fn chat(
     }))
 }
 
-/// Extract text from a part, mirroring `Part::text()` but kept local so the
-/// handler reads as a plain function (and is robust to the exact enum shape).
-fn part_text(part: &Part) -> Option<&str> {
-    match part {
-        Part::Text { text } => Some(text),
-        _ => None,
-    }
-}
-
 // ============================================================
 // Serve entry point
 // ============================================================
 
 /// Build the merged router (framework app + custom `/api/chat`) and serve it
 /// on `0.0.0.0:{port}`. Real-device reachable on the LAN.
+///
+/// `Launcher::build_app()` applies CORS + `TimeoutLayer` + `DefaultBodyLimit`
+/// only to its OWN routes. A route merged in afterward is not covered, so we
+/// attach a timeout + body limit to the chat router ourselves before merging.
+/// CORS is intentionally NOT added: the iOS client is native HTTP (no browser
+/// preflight) and adding a `CorsLayer` would pull `tower-http` in as a direct
+/// dependency for no behavioral benefit here.
 pub async fn serve(agent: Arc<dyn Agent>, port: u16) -> anyhow::Result<()> {
     let session_service: Arc<dyn SessionService> = Arc::new(InMemorySessionService::new());
 
@@ -165,7 +229,23 @@ pub async fn serve(agent: Arc<dyn Agent>, port: u16) -> anyhow::Result<()> {
         user_id: "user".to_string(),
     });
 
-    let chat_router = Router::new().route("/api/chat", post(chat)).with_state(chat_state);
+    // Timeout bounds a stuck local LLM; body limit guards against pathological
+    // inputs. Both applied per-route so they cover /api/chat even though the
+    // framework's own layers don't extend to merged-in routes. We use
+    // `tower_http::timeout::TimeoutLayer` (not `tower`'s) because the HTTP
+    // variant converts a timeout into a 408 response, keeping the service
+    // error `Infallible` as axum's `Router::layer` requires.
+    let chat_router = Router::new()
+        .route("/api/chat", post(chat))
+        .layer(
+            ServiceBuilder::new()
+                .layer(TimeoutLayer::with_status_code(
+                    StatusCode::REQUEST_TIMEOUT,
+                    CHAT_TIMEOUT,
+                ))
+                .layer(DefaultBodyLimit::max(CHAT_BODY_LIMIT)),
+        )
+        .with_state(chat_state);
 
     // Framework app: all `/api/*` routes + web UI, state fully resolved.
     let app = Launcher::new(agent)
@@ -237,24 +317,5 @@ mod tests {
         assert_eq!(normalize_reply("  午饭 35 块  "), "午饭 35 块");
         // only outer whitespace is trimmed
         assert_eq!(normalize_reply("a  b"), "a  b");
-    }
-
-    #[test]
-    fn part_text_extracts_from_text_variant() {
-        let part = Part::Text {
-            text: "hello world".to_string(),
-        };
-        assert_eq!(part_text(&part), Some("hello world"));
-    }
-
-    #[test]
-    fn part_text_returns_none_for_non_text_variants() {
-        let part = Part::FunctionCall {
-            name: "record_expense".to_string(),
-            args: serde_json::json!({}),
-            id: None,
-            thought_signature: None,
-        };
-        assert_eq!(part_text(&part), None);
     }
 }
