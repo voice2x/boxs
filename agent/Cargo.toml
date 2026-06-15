@@ -1,0 +1,26 @@
+[package]
+name = "boxs-agent"
+version = "0.1.0"
+edition = "2021"
+description = "Boxs AI Agent - 本地 LLM 驱动的生活记录助手"
+
+[dependencies]
+adk-rust = { version = "1.0", features = [
+    "openai",      # 通过 OpenAI 兼容 API 连接 llama.cpp
+    "ollama",      # 备选：通过 Ollama 连接
+    "agents",
+    "runner",
+    "sessions",
+    "tools",
+    "cli",
+    "server",
+] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+schemars = "1"
+anyhow = "1"
+dotenvy = "0.15"
+chrono = "0.4"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
