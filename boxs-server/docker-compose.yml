@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-boxs}
     env_file: .env
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
     ports:
       - "${POSTGRES_PORT:-7450}:5432"
     networks:
@@ -34,7 +34,12 @@ services:
       retries: 3
 
 volumes:
-  pgdata:
+  pgdata: 
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /root/apps/mini-devops/postgres
 
 networks:
   boxs-net:
