@@ -1,3 +1,4 @@
+# ── 构建 ──
 FROM docker.m.daocloud.io/rust:latest AS builder
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
