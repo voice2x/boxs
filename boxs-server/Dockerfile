@@ -1,6 +1,10 @@
 FROM docker.m.daocloud.io/rust:latest AS builder
 WORKDIR /app
 COPY boxs-server/Cargo.toml boxs-server/Cargo.lock ./
+
+RUN mkdir .cargo
+COPY boxs-server/.cargo/config.toml .cargo/config.toml
+
 RUN mkdir src && echo "fn main() {}" > src/main.rs
 RUN cargo build --release && rm -rf src
 COPY boxs-server/src/ src/

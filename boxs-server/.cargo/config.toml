@@ -1,0 +1,7 @@
+[source.crates-io]
+# 将默认的crates-io源替换为下面的ustc源
+replace-with = 'ustc'
+
+[source.ustc]
+# 使用稀疏索引，国内访问速度快
+registry = "sparse+https://mirrors.ustc.edu.cn/crates.io-index/"
