@@ -106,6 +106,19 @@ impl LlmClient {
             },
         };
 
+        // 入参日志
+        tracing::info!(
+            model = %self.model,
+            url = %url,
+            temperature = body.temperature as f64,
+            max_tokens = body.max_tokens,
+            system_prompt_len = system_prompt.len(),
+            user_message = %user_message,
+            "LLM 调用入参",
+        );
+
+        let started = std::time::Instant::now();
+
         let resp = self
             .http
             .post(&url)
@@ -114,35 +127,56 @@ impl LlmClient {
             .json(&body)
             .timeout(self.timeout)
             .send()
-            .await?;
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, model = %self.model, "LLM 请求发送失败");
+                e
+            })?;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            tracing::error!(status = %status, body = %text, "LLM API 错误");
+            tracing::error!(status = %status, model = %self.model, body = %text, "LLM 返回错误状态码");
             return Err(AppError::LlmError(format!("LLM 返回 {}", status)));
         }
 
-        let chat_resp: ChatResponse = resp.json().await?;
+        let chat_resp: ChatResponse = resp
+            .json()
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, model = %self.model, "LLM 响应解析失败");
+                e
+            })?;
 
-        let choice = chat_resp
-            .choices
-            .into_iter()
-            .next()
-            .ok_or_else(|| AppError::LlmError("LLM 返回空结果".into()))?;
+        let ChatResponse { choices, usage } = chat_resp;
+
+        let choice = match choices.into_iter().next() {
+            Some(c) => c,
+            None => {
+                tracing::error!(model = %self.model, "LLM 返回空结果");
+                return Err(AppError::LlmError("LLM 返回空结果".into()));
+            }
+        };
+
+        let prompt_tokens = usage.as_ref().map(|u| u.prompt_tokens).unwrap_or(0);
+        let completion_tokens = usage.as_ref().map(|u| u.completion_tokens).unwrap_or(0);
+        let content = choice.message.content;
+        let elapsed_ms = started.elapsed().as_millis() as u64;
+
+        // 结果日志
+        tracing::info!(
+            model = %self.model,
+            prompt_tokens,
+            completion_tokens,
+            elapsed_ms,
+            content = %content,
+            "LLM 调用结果",
+        );
 
         Ok(LlmResult {
-            content: choice.message.content,
-            prompt_tokens: chat_resp
-                .usage
-                .as_ref()
-                .map(|u| u.prompt_tokens)
-                .unwrap_or(0),
-            completion_tokens: chat_resp
-                .usage
-                .as_ref()
-                .map(|u| u.completion_tokens)
-                .unwrap_or(0),
+            content,
+            prompt_tokens,
+            completion_tokens,
             model: self.model.clone(),
         })
     }

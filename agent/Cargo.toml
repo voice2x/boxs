@@ -36,3 +36,10 @@ tower = "0.5"
 # keeping the service error `Infallible` (axum's `Router::layer` requirement).
 # Already a transitive dep via adk-server; listed explicitly for direct use.
 tower-http = { version = "0.6", features = ["timeout"] }
+# `adk_cli::TelemetryConfig` lets us suppress the Launcher's built-in tracing
+# init via `with_telemetry(TelemetryConfig::None)`. The app sets its own global
+# subscriber in main(), so ADK's default `AdkExporter` init would otherwise
+# panic with "a global default trace dispatcher has already been set". Already
+# compiled transitively through adk-rust's `cli` feature — direct dep adds no
+# build cost, just lets us name the type.
+adk-cli = "1.0"

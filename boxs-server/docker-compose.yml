@@ -1,14 +1,17 @@
 services:
   postgres:
-    image: postgres:17-alpine
+    image: docker.m.daocloud.io/postgres:latest
     environment:
       POSTGRES_DB: boxs
       POSTGRES_USER: ${POSTGRES_USER:-boxs}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-boxs}
+    env_file: .env
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-7450}:5432"
+    networks:
+      - boxs-net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U boxs"]
       interval: 5s
@@ -17,11 +20,13 @@ services:
   server:
     build: .
     ports:
-      - "8000:8000"
+      - "7455:8000"
     env_file: .env
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - boxs-net
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -30,3 +35,7 @@ services:
 
 volumes:
   pgdata:
+
+networks:
+  boxs-net:
+    driver: bridge

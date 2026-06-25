@@ -384,7 +384,11 @@ async fn main() -> anyhow::Result<()> {
 - 用简洁自然的中文回复，不要啰嗦
 - 日期默认为今天，除非用户明确指定"#,
         )
-        .model(model);
+        .model(model)
+        // 本地 llama.cpp 生成速度有限,慢主要来自输出 token 数。封顶输出长度 +
+        // 低温让回复更短更稳,单次请求时间可控。数值按需调。
+        .max_output_tokens(256)
+        .temperature(0.2);
 
     for tool in tools {
         agent_builder = agent_builder.tool(tool);

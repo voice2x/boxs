@@ -21,6 +21,7 @@ use std::time::Duration;
 use adk_rust::session::{CreateRequest, DeleteRequest, InMemorySessionService, SessionService};
 use adk_rust::{Agent, Content, Launcher, SessionId, UserId};
 use adk_rust::runner::Runner;
+use adk_cli::launcher::TelemetryConfig;
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, State},
@@ -248,7 +249,14 @@ pub async fn serve(agent: Arc<dyn Agent>, port: u16) -> anyhow::Result<()> {
         .with_state(chat_state);
 
     // Framework app: all `/api/*` routes + web UI, state fully resolved.
+    //
+    // `with_telemetry(TelemetryConfig::None)` suppresses the Launcher's own
+    // tracing init. main() already installs the global subscriber, and leaving
+    // ADK's default (`AdkExporter`) enabled makes `build_app()` call
+    // `set_global_default` a second time, panicking with "a global default
+    // trace dispatcher has already been set".
     let app = Launcher::new(agent)
+        .with_telemetry(TelemetryConfig::None)
         .build_app()
         .map_err(|e| anyhow::anyhow!("build_app failed: {e:?}"))?;
     let app = app.merge(chat_router);
