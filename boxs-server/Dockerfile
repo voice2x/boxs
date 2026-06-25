@@ -1,16 +1,16 @@
 FROM docker.m.daocloud.io/rust:latest AS builder
 WORKDIR /app
-COPY boxs-server/Cargo.toml boxs-server/Cargo.lock ./
+COPY Cargo.toml Cargo.lock ./
 
 RUN mkdir .cargo
-COPY boxs-server/.cargo/config.toml .cargo/config.toml
+COPY .cargo/config.toml .cargo/config.toml
 
-COPY boxs-server/.env .env
+COPY .env .env
 
 RUN mkdir src && echo "fn main() {}" > src/main.rs
 RUN cargo build --release && rm -rf src
-COPY boxs-server/src/ src/
-COPY boxs-server/migrations/ migrations/
+COPY src/ src/
+COPY migrations/ migrations/
 RUN touch src/main.rs && cargo build --release
 
 EXPOSE 8000
