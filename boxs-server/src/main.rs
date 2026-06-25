@@ -29,6 +29,9 @@ async fn main() {
     let config = config::Config::from_env();
     let addr = format!("{}:{}", config.host, config.port);
 
+    // 输出数据库连接信息
+    tracing::info!("数据库连接信息: {}", config.database_url);
+
     let state = AppState::new(config).await.expect("初始化失败");
 
     // 自动数据库迁移
