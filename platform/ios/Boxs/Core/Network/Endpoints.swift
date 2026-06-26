@@ -62,14 +62,14 @@ struct NLUPayload: Encodable {
 /// App 全局配置
 enum AppConfiguration {
     #if DEBUG
-    static let apiBaseURL = "http://192.168.0.100:8000"
+    static let apiBaseURL = "http://boxs.voice2x.com"
     #else
     static let apiBaseURL = "https://api.boxs.app"
     #endif
 
     static let sttWebSocketURL: String = {
         #if DEBUG
-        return "ws://192.168.0.100:8000/ws/stt"
+        return "ws://boxs.voice2x.com/ws/stt"
         #else
         return "wss://api.boxs.app/ws/stt"
         #endif
