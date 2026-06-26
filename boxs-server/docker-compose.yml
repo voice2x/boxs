@@ -5,7 +5,6 @@ services:
       POSTGRES_DB: boxs
       POSTGRES_USER: ${POSTGRES_USER:-boxs}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-boxs}
-    # env_file: .env
     volumes:
       - pgdata:/var/lib/postgresql
     ports:
