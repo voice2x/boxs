@@ -33,6 +33,7 @@ pub struct HabitRecord {
     pub note: Option<String>,
     pub record_date: chrono::NaiveDate,
     pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -213,7 +214,7 @@ pub async fn checkin(
 
     // Check if already checked in today
     let existing = sqlx::query_as::<_, HabitRecord>(
-        "SELECT id, habit_id, user_id, value, note, record_date, created_at
+        "SELECT id, habit_id, user_id, value, note, record_date, created_at, updated_at
            FROM habit_records
            WHERE habit_id = $1 AND user_id = $2 AND record_date = $3",
     )
@@ -226,9 +227,9 @@ pub async fn checkin(
     if let Some(record) = existing {
         // Update existing record
         let updated = sqlx::query_as::<_, HabitRecord>(
-            "UPDATE habit_records SET value = $1, note = $2
+            "UPDATE habit_records SET value = $1, note = $2, updated_at = now()
                WHERE id = $3
-               RETURNING id, habit_id, user_id, value, note, record_date, created_at",
+               RETURNING id, habit_id, user_id, value, note, record_date, created_at, updated_at",
         )
         .bind(body.value)
         .bind(&body.note)
@@ -241,7 +242,7 @@ pub async fn checkin(
     let record = sqlx::query_as::<_, HabitRecord>(
         "INSERT INTO habit_records (habit_id, user_id, value, note, record_date)
            VALUES ($1, $2, $3, $4, $5)
-           RETURNING id, habit_id, user_id, value, note, record_date, created_at",
+           RETURNING id, habit_id, user_id, value, note, record_date, created_at, updated_at",
     )
     .bind(body.habit_id)
     .bind(uid)
@@ -292,7 +293,7 @@ pub async fn calendar(
 
     let records = if let (Some(s), Some(e)) = (&start_date, &end_date) {
         sqlx::query_as::<_, HabitRecord>(
-            "SELECT id, habit_id, user_id, value, note, record_date, created_at
+            "SELECT id, habit_id, user_id, value, note, record_date, created_at, updated_at
                FROM habit_records
                WHERE habit_id = $1 AND user_id = $2 AND record_date >= $3 AND record_date <= $4
                ORDER BY record_date ASC",
@@ -305,7 +306,7 @@ pub async fn calendar(
         .await?
     } else {
         sqlx::query_as::<_, HabitRecord>(
-            "SELECT id, habit_id, user_id, value, note, record_date, created_at
+            "SELECT id, habit_id, user_id, value, note, record_date, created_at, updated_at
                FROM habit_records
                WHERE habit_id = $1 AND user_id = $2
                ORDER BY record_date ASC",
@@ -439,5 +440,140 @@ mod def_sync_tests {
         definition_batch(&pool, uid, BatchRequest { changes: vec![c.clone()] }).await.unwrap();
         let resp = definition_changes(&pool, uid, None, 500).await.unwrap();
         assert!(resp.items.iter().any(|r| r.id == c.id && !r.is_active));
+    }
+}
+
+const HABIT_REC_COLUMNS: &str =
+    "id, habit_id, user_id, value, note, record_date, created_at, updated_at";
+
+/// habit_checkin 的批量推送载荷（无客户端 id，按自然键 upsert）
+#[derive(Debug, Deserialize, FromRow, Serialize)]
+pub struct CheckinChange {
+    pub habit_id: uuid::Uuid,
+    pub record_date: chrono::NaiveDate,
+    pub value: Option<f64>,
+    pub note: Option<String>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+pub async fn checkin_changes(
+    pool: &sqlx::PgPool,
+    uid: uuid::Uuid,
+    cursor: Option<Cursor>,
+    limit: i64,
+) -> Result<ChangesResponse<HabitRecord>, AppError> {
+    let limit = limit.clamp(1, 500);
+    let fetch = limit + 1;
+    let mut items: Vec<HabitRecord> = if let Some(c) = &cursor {
+        sqlx::query_as::<_, HabitRecord>(&format!(
+            "SELECT {HABIT_REC_COLUMNS} FROM habit_records
+             WHERE user_id = $1 AND (updated_at, id) > ($2, $3)
+             ORDER BY updated_at ASC, id ASC LIMIT $4"
+        ))
+        .bind(uid).bind(c.updated_at).bind(c.id).bind(fetch).fetch_all(pool).await?
+    } else {
+        sqlx::query_as::<_, HabitRecord>(&format!(
+            "SELECT {HABIT_REC_COLUMNS} FROM habit_records
+             WHERE user_id = $1 ORDER BY updated_at ASC, id ASC LIMIT $2"
+        ))
+        .bind(uid).bind(fetch).fetch_all(pool).await?
+    };
+    let next_cursor = if items.len() as i64 > limit {
+        let last = items.pop().expect("len > limit");
+        Some(Cursor { updated_at: last.updated_at.unwrap_or_else(chrono::Utc::now), id: last.id }.encode())
+    } else { None };
+    Ok(ChangesResponse { items, next_cursor })
+}
+
+pub async fn checkin_batch(
+    pool: &sqlx::PgPool,
+    uid: uuid::Uuid,
+    req: BatchRequest<CheckinChange>,
+) -> Result<Vec<BatchResult<HabitRecord>>, AppError> {
+    let mut tx = pool.begin().await?;
+    let mut out = Vec::with_capacity(req.changes.len());
+    for c in req.changes {
+        // 校验习惯归属
+        let belongs: Option<uuid::Uuid> =
+            sqlx::query_scalar("SELECT id FROM habit_definitions WHERE id=$1 AND user_id=$2")
+                .bind(c.habit_id).bind(uid).fetch_optional(&mut *tx).await?;
+        if belongs.is_none() {
+            return Err(AppError::BadRequest("习惯不存在或不属于该用户".into()));
+        }
+        let applied = sqlx::query_as::<_, HabitRecord>(&format!(
+            "INSERT INTO habit_records (user_id, habit_id, value, note, record_date, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             ON CONFLICT (habit_id, record_date) DO UPDATE SET
+               value = EXCLUDED.value, note = EXCLUDED.note, updated_at = EXCLUDED.updated_at
+             WHERE habit_records.updated_at IS NULL OR EXCLUDED.updated_at >= habit_records.updated_at
+             RETURNING {HABIT_REC_COLUMNS}"
+        ))
+        .bind(uid).bind(c.habit_id).bind(c.value).bind(&c.note)
+        .bind(c.record_date).bind(c.updated_at)
+        .fetch_optional(&mut *tx).await?;
+
+        let record = match applied {
+            Some(r) => BatchResult { status: "applied", record: r },
+            None => {
+                let existing = sqlx::query_as::<_, HabitRecord>(&format!(
+                    "SELECT {HABIT_REC_COLUMNS} FROM habit_records
+                     WHERE habit_id=$1 AND record_date=$2 AND user_id=$3"
+                ))
+                .bind(c.habit_id).bind(c.record_date).bind(uid)
+                .fetch_optional(&mut *tx).await?
+                .ok_or_else(|| AppError::Internal("conflict 但行不存在".into()))?;
+                BatchResult { status: "conflict", record: existing }
+            }
+        };
+        out.push(record);
+    }
+    tx.commit().await?;
+    Ok(out)
+}
+
+#[cfg(test)]
+mod checkin_sync_tests {
+    use super::*;
+    use sqlx::PgPool;
+
+    async fn seed_user_and_habit(pool: &PgPool) -> (uuid::Uuid, uuid::Uuid) {
+        let uid = uuid::Uuid::new_v4();
+        sqlx::query("INSERT INTO users (id, email, password_hash) VALUES ($1, $2, 'x')")
+            .bind(uid).bind(format!("{}@t", uid)).execute(pool).await.unwrap();
+        let hid = uuid::Uuid::new_v4();
+        sqlx::query("INSERT INTO habit_definitions (id, user_id, name) VALUES ($1, $2, 'run')")
+            .bind(hid).bind(uid).execute(pool).await.unwrap();
+        (uid, hid)
+    }
+
+    fn ts(s: &str) -> chrono::DateTime<chrono::Utc> {
+        chrono::DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&chrono::Utc)
+    }
+
+    #[sqlx::test]
+    async fn checkin_batch_upserts_by_natural_key(pool: PgPool) {
+        let (uid, hid) = seed_user_and_habit(&pool).await;
+        let rd = chrono::NaiveDate::from_ymd_opt(2026, 6, 1).unwrap();
+        let c1 = CheckinChange { habit_id: hid, record_date: rd, value: Some(1.0), note: None, updated_at: ts("2026-06-01T00:00:00Z") };
+        let c2 = CheckinChange { habit_id: hid, record_date: rd, value: Some(2.0), note: None, updated_at: ts("2026-06-02T00:00:00Z") };
+        checkin_batch(&pool, uid, BatchRequest { changes: vec![c1] }).await.unwrap();
+        let out = checkin_batch(&pool, uid, BatchRequest { changes: vec![c2] }).await.unwrap();
+        assert_eq!(out[0].status, "applied");
+        assert_eq!(out[0].record.value, Some(2.0));
+        let n: i64 = sqlx::query_scalar("SELECT count(*) FROM habit_records WHERE habit_id=$1")
+            .bind(hid).fetch_one(&pool).await.unwrap();
+        assert_eq!(n, 1, "自然键应只一行");
+    }
+
+    #[sqlx::test]
+    async fn checkin_batch_lww_conflict(pool: PgPool) {
+        let (uid, hid) = seed_user_and_habit(&pool).await;
+        let rd = chrono::NaiveDate::from_ymd_opt(2026, 6, 1).unwrap();
+        let new = CheckinChange { habit_id: hid, record_date: rd, value: Some(5.0), note: None, updated_at: ts("2026-06-05T00:00:00Z") };
+        checkin_batch(&pool, uid, BatchRequest { changes: vec![new] }).await.unwrap();
+        let old = CheckinChange { habit_id: hid, record_date: rd, value: Some(1.0), note: None, updated_at: ts("2026-06-01T00:00:00Z") };
+        let out = checkin_batch(&pool, uid, BatchRequest { changes: vec![old] }).await.unwrap();
+        assert_eq!(out[0].status, "conflict");
+        assert_eq!(out[0].record.value, Some(5.0), "胜出版本不变");
     }
 }
