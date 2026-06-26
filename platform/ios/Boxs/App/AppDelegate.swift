@@ -16,10 +16,15 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // 已登录时触发初始同步
         if TokenManager.shared.isLoggedIn {
             Task {
-                await SyncService.shared.syncAll()
+                await SyncEngine.shared.sync()
             }
         }
+        BackgroundSync.shared.register()
 
         return true
+    }
+
+    func applicationDidEnterBackground(_ application: UIApplication) {
+        BackgroundSync.shared.scheduleAppRefresh()
     }
 }

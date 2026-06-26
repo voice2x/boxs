@@ -31,7 +31,7 @@ final class TodoViewModel {
 
             // 从后端同步待办数据
             if TokenManager.shared.isLoggedIn {
-                await SyncService.shared.syncTodos()
+                await SyncEngine.shared.sync()
             }
 
             do {
@@ -51,39 +51,17 @@ final class TodoViewModel {
 
     func completeTodo(id: String) {
         Task {
-            do {
-                let db = try AppDatabase.shared.getDB()
-                try db.write { db in
-                    if var record = try TodoRecord.fetchOne(db, key: id) {
-                        record.isCompleted = true
-                        record.completedAt = Date()
-                        try record.save(db)
-                    }
-                }
-                Task { await SyncService.shared.pushTodoComplete(id: id) }
-                loadTodos()
-            } catch {
-                print("完成待办失败: \(error)")
-            }
+            await SyncEngine.shared.enqueueTodoComplete(id: id)
+            await SyncEngine.shared.sync()
+            loadTodos()
         }
     }
 
     func deleteTodo(id: String) {
         Task {
-            do {
-                let db = try AppDatabase.shared.getDB()
-                try db.write { db in
-                    if var record = try TodoRecord.fetchOne(db, key: id) {
-                        record.isDeleted = true
-                        record.deletedAt = Date()
-                        try record.save(db)
-                    }
-                }
-                Task { await SyncService.shared.pushTodoDelete(id: id) }
-                loadTodos()
-            } catch {
-                print("删除待办失败: \(error)")
-            }
+            await SyncEngine.shared.enqueueTodoDelete(id: id)
+            await SyncEngine.shared.sync()
+            loadTodos()
         }
     }
 }

@@ -124,7 +124,7 @@ final class NLUViewModel {
         try await db.write { db in
             try record.insert(db)
         }
-        Task { if TokenManager.shared.isLoggedIn { await SyncService.shared.pushExpense(record) } }
+        Task { if TokenManager.shared.isLoggedIn { await SyncEngine.shared.enqueueExpense(record); await SyncEngine.shared.sync() } }
         return record
     }
 
@@ -142,7 +142,7 @@ final class NLUViewModel {
             try await db.write { db in
                 try record.insert(db)
             }
-            Task { if TokenManager.shared.isLoggedIn { await SyncService.shared.pushHabitCheckin(record) } }
+            Task { if TokenManager.shared.isLoggedIn { await SyncEngine.shared.enqueueCheckin(record); await SyncEngine.shared.sync() } }
         } else {
             logger.warning("saveHabitCheckin: 未找到习惯定义 name=\(habitName)")
         }
@@ -155,7 +155,7 @@ final class NLUViewModel {
         try await db.write { db in
             try record.insert(db)
         }
-        Task { if TokenManager.shared.isLoggedIn { await SyncService.shared.pushTodo(record) } }
+        Task { if TokenManager.shared.isLoggedIn { await SyncEngine.shared.enqueueTodo(record); await SyncEngine.shared.sync() } }
         return record
     }
 

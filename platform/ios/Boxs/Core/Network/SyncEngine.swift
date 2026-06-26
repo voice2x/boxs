@@ -39,6 +39,12 @@ actor SyncEngine {
         await saveLocal(rec)
         await enqueue("todos", key: rec.id, TodoMapper.toChange(rec))
     }
+    func enqueueTodoComplete(id: String) async {
+        guard var rec = await fetch(TodoRecord.self, id: id) else { return }
+        rec.isCompleted = true; rec.completedAt = Date(); rec.updatedAt = Date()
+        await saveLocal(rec)
+        await enqueue("todos", key: rec.id, TodoMapper.toChange(rec))
+    }
     func enqueueHabit(_ r: HabitDefinition) async {
         var rec = r; rec.updatedAt = Date()
         await saveLocal(rec)
