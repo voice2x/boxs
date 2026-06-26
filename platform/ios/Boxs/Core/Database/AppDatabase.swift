@@ -140,6 +140,13 @@ final class AppDatabase {
             }
         }
 
+        // v3: 发件箱死信标记(到重试上限标记 dead,不再静默丢弃)
+        migrator.registerMigration("v3_outbox_dead") { db in
+            try db.alter(table: "sync_outbox") { t in
+                t.add(column: "dead", .boolean).notNull().defaults(to: false)
+            }
+        }
+
         try migrator.migrate(dbQueue)
         logger.info("数据库迁移完成")
     }

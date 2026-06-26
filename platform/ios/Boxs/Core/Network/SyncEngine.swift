@@ -155,10 +155,23 @@ actor SyncEngine {
             for id in ids.compactMap({ $0 }) {
                 guard var r = try SyncOutbox.fetchOne(db, key: id) else { continue }
                 r.attempts += 1
-                if r.attempts >= maxAttempts { try SyncOutbox.deleteOne(db, key: id) }
-                else { try r.update(db) }
+                if r.attempts >= maxAttempts { r.dead = true }   // 死信:标记而非删除,供 UI 提示
+                try r.update(db)
             }
         }
+    }
+
+    /// 死信数量(供 UI 展示"有同步失败")
+    func deadLetterCount() async -> Int {
+        guard let db = try? AppDatabase.shared.getDB() else { return 0 }
+        return (try? await db.read { try SyncOutbox.deadCount($0) }) ?? 0
+    }
+
+    /// 重试全部死信(清标记,重新进入待发)
+    func retryDeadLetters() async {
+        guard let db = try? AppDatabase.shared.getDB() else { return }
+        _ = try? await db.write { try SyncOutbox.resetDead($0) }
+        await sync(force: true)
     }
 
     // MARK: - apply(同步回写:delete+insert,绕过 willUpdate,保留服务端 updatedAt)

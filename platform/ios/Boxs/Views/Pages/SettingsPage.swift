@@ -4,6 +4,7 @@ import SwiftUI
 struct SettingsPage: View {
     @State private var authViewModel = AuthViewModel()
     @State private var showLoginSheet = false
+    @State private var syncFailures = 0
     @AppStorage("isDarkMode") private var isDarkMode = false
 
     @Environment(\.appColors) private var c
@@ -12,6 +13,11 @@ struct SettingsPage: View {
         VStack(alignment: .leading, spacing: 0) {
             // 用户区域
             userSection
+
+            if syncFailures > 0 {
+                AppDivider()
+                deadLetterBanner
+            }
 
             AppDivider()
 
@@ -24,6 +30,7 @@ struct SettingsPage: View {
         .background(c.background)
         .navigationTitle("设置")
         .navigationBarTitleDisplayMode(.inline)
+        .task { syncFailures = await SyncEngine.shared.deadLetterCount() }
         .sheet(isPresented: $showLoginSheet) {
             loginSheet
         }
@@ -67,6 +74,27 @@ struct SettingsPage: View {
                     .foregroundStyle(c.primary)
                 }
             }
+        }
+        .padding(S.page)
+    }
+
+    // MARK: - 死信提示
+
+    private var deadLetterBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(c.expense)
+            Text("\(syncFailures) 条数据同步失败")
+                .font(.system(size: 13))
+                .foregroundStyle(c.textPrimary)
+            Spacer()
+            Button("重试") {
+                Task {
+                    await SyncEngine.shared.retryDeadLetters()
+                    syncFailures = await SyncEngine.shared.deadLetterCount()
+                }
+            }
+            .buttonStyle(ActionButtonStyle(kind: .secondary))
         }
         .padding(S.page)
     }
