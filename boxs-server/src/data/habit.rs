@@ -6,10 +6,11 @@ use sqlx::FromRow;
 use std::sync::Arc;
 
 use crate::auth::jwt::VerifiedUser;
+use crate::data::sync::{BatchRequest, BatchResult, ChangesResponse, Cursor};
 use crate::error::AppError;
 use crate::state::AppState;
 
-#[derive(Debug, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct HabitDefinition {
     pub id: uuid::Uuid,
     pub user_id: uuid::Uuid,
@@ -316,4 +317,127 @@ pub async fn calendar(
     };
 
     Ok(Json(CalendarResponse { habit, records }))
+}
+
+const HABIT_DEF_COLUMNS: &str =
+    "id, user_id, name, emoji, frequency, target_value, unit, is_active, created_at, updated_at";
+
+pub async fn definition_changes(
+    pool: &sqlx::PgPool,
+    uid: uuid::Uuid,
+    cursor: Option<Cursor>,
+    limit: i64,
+) -> Result<ChangesResponse<HabitDefinition>, AppError> {
+    let limit = limit.clamp(1, 500);
+    let fetch = limit + 1;
+    let mut items: Vec<HabitDefinition> = if let Some(c) = &cursor {
+        sqlx::query_as::<_, HabitDefinition>(&format!(
+            "SELECT {HABIT_DEF_COLUMNS} FROM habit_definitions
+             WHERE user_id = $1 AND (updated_at, id) > ($2, $3)
+             ORDER BY updated_at ASC, id ASC LIMIT $4"
+        ))
+        .bind(uid).bind(c.updated_at).bind(c.id).bind(fetch)
+        .fetch_all(pool).await?
+    } else {
+        sqlx::query_as::<_, HabitDefinition>(&format!(
+            "SELECT {HABIT_DEF_COLUMNS} FROM habit_definitions
+             WHERE user_id = $1 ORDER BY updated_at ASC, id ASC LIMIT $2"
+        ))
+        .bind(uid).bind(fetch).fetch_all(pool).await?
+    };
+    let next_cursor = if items.len() as i64 > limit {
+        let last = items.pop().expect("len > limit");
+        Some(Cursor { updated_at: last.updated_at.unwrap_or_else(chrono::Utc::now), id: last.id }.encode())
+    } else { None };
+    Ok(ChangesResponse { items, next_cursor })
+}
+
+pub async fn definition_batch(
+    pool: &sqlx::PgPool,
+    uid: uuid::Uuid,
+    req: BatchRequest<HabitDefinition>,
+) -> Result<Vec<BatchResult<HabitDefinition>>, AppError> {
+    let mut tx = pool.begin().await?;
+    let mut out = Vec::with_capacity(req.changes.len());
+    for c in req.changes {
+        let ua = c.updated_at.unwrap_or_else(chrono::Utc::now);
+        let applied = sqlx::query_as::<_, HabitDefinition>(&format!(
+            "INSERT INTO habit_definitions
+               (id, user_id, name, emoji, frequency, target_value, unit, is_active, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, now()), $10)
+             ON CONFLICT (id) DO UPDATE SET
+               name = EXCLUDED.name,
+               emoji = EXCLUDED.emoji,
+               frequency = EXCLUDED.frequency,
+               target_value = EXCLUDED.target_value,
+               unit = EXCLUDED.unit,
+               is_active = EXCLUDED.is_active,
+               updated_at = EXCLUDED.updated_at
+             WHERE habit_definitions.updated_at IS NULL OR EXCLUDED.updated_at >= habit_definitions.updated_at
+             RETURNING {HABIT_DEF_COLUMNS}"
+        ))
+        .bind(c.id).bind(uid).bind(&c.name).bind(&c.emoji)
+        .bind(&c.frequency).bind(c.target_value).bind(&c.unit)
+        .bind(c.is_active).bind(c.created_at).bind(ua)
+        .fetch_optional(&mut *tx).await?;
+
+        let record = match applied {
+            Some(r) => BatchResult { status: "applied", record: r },
+            None => {
+                let existing = sqlx::query_as::<_, HabitDefinition>(&format!(
+                    "SELECT {HABIT_DEF_COLUMNS} FROM habit_definitions WHERE id = $1 AND user_id = $2"
+                ))
+                .bind(c.id).bind(uid).fetch_optional(&mut *tx).await?
+                .ok_or_else(|| AppError::Internal("conflict 但行不存在".into()))?;
+                BatchResult { status: "conflict", record: existing }
+            }
+        };
+        out.push(record);
+    }
+    tx.commit().await?;
+    Ok(out)
+}
+
+#[cfg(test)]
+mod def_sync_tests {
+    use super::*;
+    use sqlx::PgPool;
+
+    async fn seed_user(pool: &PgPool) -> uuid::Uuid {
+        let uid = uuid::Uuid::new_v4();
+        sqlx::query("INSERT INTO users (id, email, password_hash) VALUES ($1, $2, 'x')")
+            .bind(uid).bind(format!("{}@test", uid)).execute(pool).await.unwrap();
+        uid
+    }
+
+    fn habit(uid: uuid::Uuid, ts: &str) -> HabitDefinition {
+        HabitDefinition {
+            id: uuid::Uuid::new_v4(), user_id: uid, name: "run".into(), emoji: None,
+            frequency: "daily".into(), target_value: None, unit: None, is_active: true,
+            created_at: chrono::DateTime::parse_from_rfc3339(ts).unwrap().with_timezone(&chrono::Utc),
+            updated_at: Some(chrono::DateTime::parse_from_rfc3339(ts).unwrap().with_timezone(&chrono::Utc)),
+        }
+    }
+
+    #[sqlx::test]
+    async fn def_batch_applies_and_idempotent(pool: PgPool) {
+        let uid = seed_user(&pool).await;
+        let c = habit(uid, "2026-06-01T00:00:00Z");
+        let out = definition_batch(&pool, uid, BatchRequest { changes: vec![c.clone()] }).await.unwrap();
+        assert_eq!(out[0].status, "applied");
+        definition_batch(&pool, uid, BatchRequest { changes: vec![c] }).await.unwrap();
+        let n: i64 = sqlx::query_scalar("SELECT count(*) FROM habit_definitions WHERE user_id=$1")
+            .bind(uid).fetch_one(&pool).await.unwrap();
+        assert_eq!(n, 1);
+    }
+
+    #[sqlx::test]
+    async fn def_changes_returns_archived(pool: PgPool) {
+        let uid = seed_user(&pool).await;
+        let mut c = habit(uid, "2026-06-01T00:00:00Z");
+        c.is_active = false;
+        definition_batch(&pool, uid, BatchRequest { changes: vec![c.clone()] }).await.unwrap();
+        let resp = definition_changes(&pool, uid, None, 500).await.unwrap();
+        assert!(resp.items.iter().any(|r| r.id == c.id && !r.is_active));
+    }
 }
