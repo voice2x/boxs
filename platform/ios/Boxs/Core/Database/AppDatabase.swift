@@ -121,6 +121,25 @@ final class AppDatabase {
             }
         }
 
+        // v2: 同步发件箱 + 游标
+        migrator.registerMigration("v2_sync") { db in
+            try db.create(table: "sync_outbox") { t in
+                t.column("id", .integer).primaryKey(autoincrement: true)
+                t.column("entity", .text).notNull()
+                t.column("recordKey", .text).notNull()
+                t.column("op", .text).notNull().defaults(to: "upsert")
+                t.column("payload", .blob).notNull()
+                t.column("attempts", .integer).notNull().defaults(to: 0)
+                t.column("createdAt", .datetime).notNull()
+                t.uniqueKey(["entity", "recordKey"])
+            }
+            try db.create(table: "sync_cursor") { t in
+                t.column("entity", .text).primaryKey()
+                t.column("cursor", .text)
+                t.column("lastSyncedAt", .datetime)
+            }
+        }
+
         try migrator.migrate(dbQueue)
         logger.info("数据库迁移完成")
     }
