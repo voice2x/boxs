@@ -9,7 +9,9 @@ final class AuthViewModel {
     var password = ""
     var isLoading = false
     var errorMessage: String?
-    var isLoggedIn: Bool { TokenManager.shared.isLoggedIn }
+    /// 存储属性(可被 @Observable 跟踪);登录/注册/登出时显式更新,触发页面重绘。
+    /// 初始值取自 TokenManager,覆盖"已登录用户再次进入"的场景。
+    var isLoggedIn: Bool = TokenManager.shared.isLoggedIn
 
     private let apiClient = APIClient.shared
 
@@ -28,6 +30,7 @@ final class AuthViewModel {
             )
             try TokenManager.shared.saveAccessToken(response.access_token)
             try TokenManager.shared.saveRefreshToken(response.refresh_token)
+            isLoggedIn = true
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -48,6 +51,7 @@ final class AuthViewModel {
             )
             try TokenManager.shared.saveAccessToken(response.access_token)
             try TokenManager.shared.saveRefreshToken(response.refresh_token)
+            isLoggedIn = true
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -57,6 +61,7 @@ final class AuthViewModel {
 
     func logout() {
         TokenManager.shared.clearTokens()
+        isLoggedIn = false
         email = ""
         password = ""
     }
