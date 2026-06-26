@@ -26,7 +26,7 @@ jsonwebtoken = "9"
 argon2 = "0.5"
 
 # 数据库
-sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres", "chrono", "uuid"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres", "chrono", "uuid", "macros", "migrate"] }
 
 # 讯飞签名
 hmac = "0.12"
