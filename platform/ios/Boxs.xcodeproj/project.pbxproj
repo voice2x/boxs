@@ -20,6 +20,7 @@
 		1E779DC47332AAAD8A114588 /* SettingsPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56B2BD3076C44ED4AFA9E08C /* SettingsPage.swift */; };
 		1F24528E20C2A034C198F670 /* HabitRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80778F005111DCFC3C0112B4 /* HabitRecord.swift */; };
 		2002B3D1554CE0F209551898 /* AppDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02B926A3484B15B526837C35 /* AppDatabase.swift */; };
+		222BAAD2318255CF1A58C456 /* SyncEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44A00220214C400403EDA921 /* SyncEngine.swift */; };
 		2353C5D98BD4AA4AE50E80CD /* HabitCalendarPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBEDCEACC35436BD665B6105 /* HabitCalendarPage.swift */; };
 		26BAB6B78BD6B9926971C2C1 /* ConfirmSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9ABBDB2515D9402DFFFC4B58 /* ConfirmSheet.swift */; };
 		26FED8645263CB8B21FD44CB /* NLUResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFC3EB9316BF853D234650E0 /* NLUResult.swift */; };
@@ -113,6 +114,7 @@
 		397C3687C24ADF73B24767D3 /* Boxs.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Boxs.entitlements; sourceTree = "<group>"; };
 		3F93A2E1B13855FD3CD92C6C /* AppDivider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDivider.swift; sourceTree = "<group>"; };
 		40F4E3B85499F0848200F69C /* ConfidenceScorer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfidenceScorer.swift; sourceTree = "<group>"; };
+		44A00220214C400403EDA921 /* SyncEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncEngine.swift; sourceTree = "<group>"; };
 		4F9299FE41D4689725355F13 /* HabitDefinition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HabitDefinition.swift; sourceTree = "<group>"; };
 		52802AA4B3DD3BCBE29F7BBF /* LLMClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMClient.swift; sourceTree = "<group>"; };
 		557760FEA25E8A0B70C57B9E /* NLUOrchestrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NLUOrchestrator.swift; sourceTree = "<group>"; };
@@ -396,6 +398,7 @@
 				C8A70627F21EE090181D7590 /* DTOs.swift */,
 				AA90D124BDC3C73C9B7CBA02 /* Endpoints.swift */,
 				BD9887CD8479E51A40187151 /* Mappers.swift */,
+				44A00220214C400403EDA921 /* SyncEngine.swift */,
 				79F375F96022560A6FAD2C03 /* SyncService.swift */,
 				B8A0C1C684570AD88F07BB06 /* TokenManager.swift */,
 			);
@@ -585,6 +588,7 @@
 				1E779DC47332AAAD8A114588 /* SettingsPage.swift in Sources */,
 				15A1236310A9FE8BA5AF2145 /* SingleIntentRuleEngine.swift in Sources */,
 				A2847AD29A316CC9F310B3C8 /* SyncCursor.swift in Sources */,
+				222BAAD2318255CF1A58C456 /* SyncEngine.swift in Sources */,
 				A0C1B626FA55A530518B5F4A /* SyncOutbox.swift in Sources */,
 				873B208DBAC7246B8ED227F1 /* SyncService.swift in Sources */,
 				ECB161239D5A642E1A8123A5 /* TagView.swift in Sources */,

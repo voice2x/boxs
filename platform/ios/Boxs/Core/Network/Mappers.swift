@@ -206,7 +206,7 @@ enum TodoMapper {
 
 // MARK: - Sync Batch Changes (本地 → /batch)
 
-struct ExpenseChange: Encodable {
+struct ExpenseChange: Codable {
     let id: String
     let user_id: String
     let record_type: String
@@ -231,7 +231,7 @@ extension ExpenseMapper {
     }
 }
 
-struct HabitChange: Encodable {
+struct HabitChange: Codable {
     let id: String
     let user_id: String
     let name: String
@@ -256,7 +256,7 @@ extension HabitMapper {
     }
 }
 
-struct TodoChange: Encodable {
+struct TodoChange: Codable {
     let id: String
     let user_id: String
     let title: String
@@ -287,7 +287,7 @@ extension TodoMapper {
     }
 }
 
-struct CheckinChange: Encodable {
+struct CheckinChange: Codable {
     let habit_id: String
     let record_date: String
     let value: Double?

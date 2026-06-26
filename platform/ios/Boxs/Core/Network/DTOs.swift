@@ -2,16 +2,16 @@ import Foundation
 
 // MARK: - Sync 通用信封
 
-struct BatchRequest<C: Encodable>: Encodable {
+struct BatchRequest<C: Encodable & Sendable>: Encodable, Sendable {
     let changes: [C]
 }
 
-struct ChangesResponse<D: Decodable>: Decodable {
+struct ChangesResponse<D: Decodable & Sendable>: Decodable, Sendable {
     let items: [D]
     let next_cursor: String?
 }
 
-struct BatchResult<D: Decodable>: Decodable {
+struct BatchResult<D: Decodable & Sendable>: Decodable, Sendable {
     let status: String   // "applied" | "conflict"
     let record: D
 }
