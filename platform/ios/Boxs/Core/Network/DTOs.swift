@@ -1,5 +1,21 @@
 import Foundation
 
+// MARK: - Sync 通用信封
+
+struct BatchRequest<C: Encodable>: Encodable {
+    let changes: [C]
+}
+
+struct ChangesResponse<D: Decodable>: Decodable {
+    let items: [D]
+    let next_cursor: String?
+}
+
+struct BatchResult<D: Decodable>: Decodable {
+    let status: String   // "applied" | "conflict"
+    let record: D
+}
+
 // MARK: - Expense DTOs
 
 struct ExpenseDTO: Decodable, Sendable {
@@ -73,6 +89,7 @@ struct HabitRecordDTO: Decodable, Sendable {
     let note: String?
     let record_date: String
     let created_at: String
+    let updated_at: String?
 }
 
 struct CheckinRequest: Encodable {

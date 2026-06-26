@@ -51,6 +51,13 @@ func formatTimeHMS(_ date: Date) -> String {
     DateFormatter.HHmmss.string(from: date)
 }
 
+/// Date → ISO8601 字符串 "2026-06-12T14:30:00Z"
+func formatISO8601(_ date: Date) -> String {
+    let f = ISO8601DateFormatter()
+    f.formatOptions = [.withInternetDateTime]
+    return f.string(from: date)
+}
+
 // MARK: - Expense Mapper
 
 enum ExpenseMapper {
@@ -139,7 +146,7 @@ enum HabitRecordMapper {
             value: dto.value.map { String($0) },
             recordDate: DateFormatter.yyyyMMdd.date(from: dto.record_date) ?? Date(),
             createdAt: parseISO8601(dto.created_at) ?? Date(),
-            updatedAt: nil
+            updatedAt: dto.updated_at.flatMap { parseISO8601($0) }
         )
     }
 }
@@ -193,6 +200,109 @@ enum TodoMapper {
             createdAt: parseISO8601(dto.created_at) ?? Date(),
             updatedAt: dto.updated_at.flatMap { parseISO8601($0) },
             deletedAt: dto.deleted_at.flatMap { parseISO8601($0) }
+        )
+    }
+}
+
+// MARK: - Sync Batch Changes (本地 → /batch)
+
+struct ExpenseChange: Encodable {
+    let id: String
+    let user_id: String
+    let record_type: String
+    let amount_cents: Int
+    let category: String
+    let note: String?
+    let record_date: String
+    let deleted_at: String?
+    let created_at: String
+    let updated_at: String?
+}
+
+extension ExpenseMapper {
+    static func toChange(_ r: ExpenseRecord) -> ExpenseChange {
+        ExpenseChange(
+            id: r.id, user_id: r.userId, record_type: r.type, amount_cents: r.amountCents,
+            category: r.category, note: r.note, record_date: formatDateYMD(r.recordDate),
+            deleted_at: r.deletedAt.map { formatISO8601($0) },
+            created_at: formatISO8601(r.createdAt),
+            updated_at: r.updatedAt.map { formatISO8601($0) }
+        )
+    }
+}
+
+struct HabitChange: Encodable {
+    let id: String
+    let user_id: String
+    let name: String
+    let emoji: String?
+    let frequency: String
+    let target_value: Double?
+    let unit: String?
+    let is_active: Bool
+    let created_at: String
+    let updated_at: String?
+}
+
+extension HabitMapper {
+    static func toChange(_ r: HabitDefinition) -> HabitChange {
+        HabitChange(
+            id: r.id, user_id: r.userId, name: r.name, emoji: r.icon,
+            frequency: "daily", target_value: r.goalValue.flatMap { Double($0) },
+            unit: r.unit, is_active: r.isActive,
+            created_at: formatISO8601(r.createdAt),
+            updated_at: r.updatedAt.map { formatISO8601($0) }
+        )
+    }
+}
+
+struct TodoChange: Encodable {
+    let id: String
+    let user_id: String
+    let title: String
+    let note: String?
+    let due_date: String?
+    let due_time: String?
+    let priority: String?
+    let status: String
+    let completed_at: String?
+    let deleted_at: String?
+    let created_at: String
+    let updated_at: String?
+}
+
+extension TodoMapper {
+    static func toChange(_ r: TodoRecord) -> TodoChange {
+        TodoChange(
+            id: r.id, user_id: r.userId, title: r.content, note: nil,
+            due_date: r.remindAt.map { formatDateYMD($0) },
+            due_time: r.remindAt.map { formatTimeHMS($0) },
+            priority: r.priority,
+            status: r.isCompleted ? "completed" : "pending",
+            completed_at: r.completedAt.map { formatISO8601($0) },
+            deleted_at: r.deletedAt.map { formatISO8601($0) },
+            created_at: formatISO8601(r.createdAt),
+            updated_at: r.updatedAt.map { formatISO8601($0) }
+        )
+    }
+}
+
+struct CheckinChange: Encodable {
+    let habit_id: String
+    let record_date: String
+    let value: Double?
+    let note: String?
+    let updated_at: String
+}
+
+extension HabitRecordMapper {
+    static func toChange(_ r: HabitRecord) -> CheckinChange {
+        CheckinChange(
+            habit_id: r.habitId,
+            record_date: formatDateYMD(r.recordDate),
+            value: r.value.flatMap { Double($0) },
+            note: nil,
+            updated_at: formatISO8601(r.updatedAt ?? r.createdAt)
         )
     }
 }
