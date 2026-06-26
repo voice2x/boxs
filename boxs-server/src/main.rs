@@ -62,15 +62,23 @@ async fn main() {
         .route("/data/expenses", get(routes::data::list_expenses).post(routes::data::create_expense))
         .route("/data/expenses/stats", get(routes::data::expense_stats))
         .route("/data/expenses/{id}", put(routes::data::update_expense).delete(routes::data::delete_expense))
+        .route("/data/expenses/changes", get(routes::data::expense_changes))
+        .route("/data/expenses/batch", post(routes::data::expense_batch))
         // Habits
         .route("/data/habits", get(routes::data::list_habits).post(routes::data::create_habit))
         .route("/data/habits/{id}", put(routes::data::update_habit).delete(routes::data::delete_habit))
         .route("/data/habits/checkin", post(routes::data::checkin_habit))
         .route("/data/habits/calendar", get(routes::data::habit_calendar))
+        .route("/data/habits/changes", get(routes::data::habit_changes))
+        .route("/data/habits/batch", post(routes::data::habit_batch))
+        .route("/data/habits/checkins/changes", get(routes::data::checkin_changes))
+        .route("/data/habits/checkins/batch", post(routes::data::checkin_batch))
         // Todos
         .route("/data/todos", get(routes::data::list_todos).post(routes::data::create_todo))
         .route("/data/todos/{id}", put(routes::data::update_todo).delete(routes::data::delete_todo))
         .route("/data/todos/{id}/complete", post(routes::data::complete_todo))
+        .route("/data/todos/changes", get(routes::data::todo_changes))
+        .route("/data/todos/batch", post(routes::data::todo_batch))
         .layer(axum::middleware::from_fn_with_state(
             Arc::new(state.clone()),
             auth::middleware::require_auth,

@@ -10,6 +10,8 @@ use crate::data::sync::{BatchRequest, BatchResult, ChangesResponse, Cursor};
 use crate::error::AppError;
 use crate::state::AppState;
 
+pub type ChangesResponseExpense = crate::data::sync::ChangesResponse<ExpenseRecord>;
+
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ExpenseRecord {
     pub id: uuid::Uuid,
