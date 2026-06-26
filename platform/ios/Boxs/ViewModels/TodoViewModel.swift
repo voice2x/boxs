@@ -31,7 +31,7 @@ final class TodoViewModel {
 
             // 从后端同步待办数据
             if TokenManager.shared.isLoggedIn {
-                await SyncEngine.shared.sync()
+                await SyncEngine.shared.sync(force: true)
             }
 
             do {
@@ -52,7 +52,7 @@ final class TodoViewModel {
     func completeTodo(id: String) {
         Task {
             await SyncEngine.shared.enqueueTodoComplete(id: id)
-            await SyncEngine.shared.sync()
+            await SyncEngine.shared.sync(force: true)
             loadTodos()
         }
     }
@@ -60,7 +60,7 @@ final class TodoViewModel {
     func deleteTodo(id: String) {
         Task {
             await SyncEngine.shared.enqueueTodoDelete(id: id)
-            await SyncEngine.shared.sync()
+            await SyncEngine.shared.sync(force: true)
             loadTodos()
         }
     }

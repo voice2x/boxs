@@ -231,13 +231,14 @@ actor SyncEngine {
 
     // MARK: - 周期入口
 
-    func sync() async {
+    /// - Parameter force: 用户驱动的刷新(页面出现)传 true,绕过防抖;后台/联网触发用默认 false。
+    func sync(force: Bool = false) async {
         guard TokenManager.shared.isLoggedIn else { return }
         if isSyncing { return }
-        if Date().timeIntervalSince(lastSyncAt) < minInterval { return }
+        if !force && Date().timeIntervalSince(lastSyncAt) < minInterval { return }
         isSyncing = true
         defer { isSyncing = false; lastSyncAt = Date() }
-        logger.info("sync 周期开始")
+        logger.info("sync 周期开始 force=\(force)")
         await drainOutbox()
         await pullAll()
         logger.info("sync 周期完成")

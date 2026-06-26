@@ -25,7 +25,7 @@ final class HabitViewModel {
 
             // 从后端同步习惯数据
             if TokenManager.shared.isLoggedIn {
-                await SyncEngine.shared.sync()
+                await SyncEngine.shared.sync(force: true)
             }
 
             do {
@@ -60,7 +60,7 @@ final class HabitViewModel {
                 try db.write { db in
                     try record.save(db)
                 }
-                Task { if TokenManager.shared.isLoggedIn { await SyncEngine.shared.enqueueCheckin(record); await SyncEngine.shared.sync() } }
+                Task { if TokenManager.shared.isLoggedIn { await SyncEngine.shared.enqueueCheckin(record); await SyncEngine.shared.sync(force: true) } }
                 loadHabits()
             } catch {
                 print("打卡失败: \(error)")

@@ -30,7 +30,7 @@ final class HomeViewModel {
 
         // 从后端同步数据
         if TokenManager.shared.isLoggedIn {
-            await SyncEngine.shared.sync()
+            await SyncEngine.shared.sync(force: true)
         }
 
         do {
