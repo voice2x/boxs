@@ -52,6 +52,35 @@ enum Endpoints {
     static func completeTodo(id: String) -> Endpoint {
         Endpoint(method: .POST, path: "/api/data/todos/\(id)/complete")
     }
+
+    // MARK: - Sync (/changes + /batch)
+    static func expenseChanges(cursor: String?, limit: Int = 200) -> Endpoint {
+        var q: [URLQueryItem] = [URLQueryItem(name: "limit", value: "\(limit)")]
+        if let cursor { q.append(URLQueryItem(name: "cursor", value: cursor)) }
+        return Endpoint(method: .GET, path: "/api/data/expenses/changes", queryItems: q)
+    }
+    static let expenseBatch = Endpoint(method: .POST, path: "/api/data/expenses/batch")
+
+    static func habitChanges(cursor: String?, limit: Int = 200) -> Endpoint {
+        var q: [URLQueryItem] = [URLQueryItem(name: "limit", value: "\(limit)")]
+        if let cursor { q.append(URLQueryItem(name: "cursor", value: cursor)) }
+        return Endpoint(method: .GET, path: "/api/data/habits/changes", queryItems: q)
+    }
+    static let habitBatch = Endpoint(method: .POST, path: "/api/data/habits/batch")
+
+    static func checkinChanges(cursor: String?, limit: Int = 200) -> Endpoint {
+        var q: [URLQueryItem] = [URLQueryItem(name: "limit", value: "\(limit)")]
+        if let cursor { q.append(URLQueryItem(name: "cursor", value: cursor)) }
+        return Endpoint(method: .GET, path: "/api/data/habits/checkins/changes", queryItems: q)
+    }
+    static let checkinBatch = Endpoint(method: .POST, path: "/api/data/habits/checkins/batch")
+
+    static func todoChanges(cursor: String?, limit: Int = 200) -> Endpoint {
+        var q: [URLQueryItem] = [URLQueryItem(name: "limit", value: "\(limit)")]
+        if let cursor { q.append(URLQueryItem(name: "cursor", value: cursor)) }
+        return Endpoint(method: .GET, path: "/api/data/todos/changes", queryItems: q)
+    }
+    static let todoBatch = Endpoint(method: .POST, path: "/api/data/todos/batch")
 }
 
 /// NLU 请求体
