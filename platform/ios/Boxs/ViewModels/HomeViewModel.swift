@@ -40,31 +40,31 @@ final class HomeViewModel {
             let startOfDay = calendar.startOfDay(for: now)
             let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now))!
 
-            let todos: [TodoRecord] = try await db.read { db in
-                try TodoRecord
+            // 一次读取聚合四项统计(避免多次 db.read)
+            let stats = try await db.read { db in
+                let todos = try TodoRecord
                     .filter(Column("isDeleted") == false)
                     .filter(Column("createdAt") >= startOfDay)
                     .fetchAll(db)
-            }
-            let expenses: [ExpenseRecord] = try await db.read { db in
-                try ExpenseRecord
+                let expenses = try ExpenseRecord
                     .filter(Column("isDeleted") == false)
                     .filter(Column("type") == "expense")
                     .filter(Column("recordDate") >= startOfMonth)
                     .fetchAll(db)
-            }
-            let habits: [HabitDefinition] = try await db.read { db in
-                try HabitDefinition.filter(Column("isActive") == true).fetchAll(db)
-            }
-            let habitRecords: [HabitRecord] = try await db.read { db in
-                try HabitRecord.filter(Column("recordDate") >= startOfDay).fetchAll(db)
+                let habits = try HabitDefinition.filter(Column("isActive") == true).fetchAll(db)
+                let habitRecords = try HabitRecord.filter(Column("recordDate") >= startOfDay).fetchAll(db)
+                return (todoCount: todos.count,
+                        todoDone: todos.filter(\.isCompleted).count,
+                        expenseCents: expenses.reduce(0) { $0 + $1.amountCents },
+                        habitTotal: habits.count,
+                        habitChecked: habitRecords.count)
             }
 
-            self.todayTodoCount = todos.count
-            self.todayTodoCompleted = todos.filter(\.isCompleted).count
-            self.monthExpenseCents = expenses.reduce(0) { $0 + $1.amountCents }
-            self.todayHabitTotal = habits.count
-            self.todayHabitChecked = habitRecords.count
+            self.todayTodoCount = stats.todoCount
+            self.todayTodoCompleted = stats.todoDone
+            self.monthExpenseCents = stats.expenseCents
+            self.todayHabitTotal = stats.habitTotal
+            self.todayHabitChecked = stats.habitChecked
 
             try await loadRecentRecords(db: db)
         } catch {
@@ -73,15 +73,26 @@ final class HomeViewModel {
     }
 
     private func loadRecentRecords(db: DatabaseQueue) async throws {
-        var items: [RecordItem] = []
-
-        let expenses: [ExpenseRecord] = try await db.read { db in
-            try ExpenseRecord
+        // 一次读取:记账/打卡/待办 + 全部习惯定义(批量建名表,消除 N+1)
+        let fetched = try await db.read { db -> ([ExpenseRecord], [HabitRecord], [TodoRecord], [String: String]) in
+            let expenses = try ExpenseRecord
                 .filter(Column("isDeleted") == false)
                 .order(Column("createdAt").desc)
                 .limit(10)
                 .fetchAll(db)
+            let habitRecords = try HabitRecord.order(Column("createdAt").desc).limit(5).fetchAll(db)
+            let todos = try TodoRecord
+                .filter(Column("isDeleted") == false)
+                .order(Column("createdAt").desc)
+                .limit(5)
+                .fetchAll(db)
+            let habits = try HabitDefinition.fetchAll(db)
+            let nameMap = Dictionary(uniqueKeysWithValues: habits.map { ($0.id, $0.name) })
+            return (expenses, habitRecords, todos, nameMap)
         }
+        let (expenses, habitRecords, todos, habitNames) = fetched
+
+        var items: [RecordItem] = []
         for expense in expenses {
             let category = ExpenseCategory(rawValue: expense.category) ?? .other
             items.append(RecordItem(
@@ -93,27 +104,12 @@ final class HomeViewModel {
                 type: .expense, createdAt: expense.createdAt
             ))
         }
-
-        let habitRecords: [HabitRecord] = try await db.read { db in
-            try HabitRecord.order(Column("createdAt").desc).limit(5).fetchAll(db)
-        }
         for record in habitRecords {
-            let habitName: String = (try? await db.read { db in
-                try HabitDefinition.filter(id: record.habitId).fetchOne(db)?.name
-            }) ?? "习惯"
             items.append(RecordItem(
-                id: record.id, emoji: "✓", title: habitName,
+                id: record.id, emoji: "✓", title: habitNames[record.habitId] ?? "习惯",
                 subtitle: record.value ?? "已打卡", trailing: "✓",
                 trailingColor: "primary", type: .habit, createdAt: record.createdAt
             ))
-        }
-
-        let todos: [TodoRecord] = try await db.read { db in
-            try TodoRecord
-                .filter(Column("isDeleted") == false)
-                .order(Column("createdAt").desc)
-                .limit(5)
-                .fetchAll(db)
         }
         for todo in todos {
             items.append(RecordItem(

@@ -51,11 +51,16 @@ func formatTimeHMS(_ date: Date) -> String {
     DateFormatter.HHmmss.string(from: date)
 }
 
-/// Date → ISO8601 字符串 "2026-06-12T14:30:00Z"
-func formatISO8601(_ date: Date) -> String {
+/// Date → ISO8601 字符串 "2026-06-12T14:30:00Z"(formatter 静态缓存,ISO8601DateFormatter 线程安全)
+/// ISO8601DateFormatter 线程安全(Apple 文档保证),未标注 Sendable,故 nonisolated(unsafe)
+nonisolated(unsafe) private let iso8601Formatter: ISO8601DateFormatter = {
     let f = ISO8601DateFormatter()
     f.formatOptions = [.withInternetDateTime]
-    return f.string(from: date)
+    return f
+}()
+
+func formatISO8601(_ date: Date) -> String {
+    iso8601Formatter.string(from: date)
 }
 
 // MARK: - Expense Mapper
