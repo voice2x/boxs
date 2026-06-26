@@ -163,10 +163,23 @@ actor SyncEngine {
 
     // MARK: - apply(同步回写:delete+insert,绕过 willUpdate,保留服务端 updatedAt)
 
-    private func applyExpense(_ dto: ExpenseDTO) async { await replaceLocal(ExpenseMapper.toLocal(dto), id: dto.id) }
-    private func applyTodo(_ dto: TodoDTO) async { await replaceLocal(TodoMapper.toLocal(dto), id: dto.id) }
-    private func applyHabit(_ dto: HabitDefinitionDTO) async { await replaceLocal(HabitMapper.toLocal(dto), id: dto.id) }
+    // 若该记录在本地尚有未推送的 outbox 行(待 drain),跳过——下个周期 drain 会以本地 updated_at 重新裁决,避免瞬时覆盖本地编辑。
+
+    private func applyExpense(_ dto: ExpenseDTO) async {
+        if await hasPending("expenses", key: dto.id) { return }
+        await replaceLocal(ExpenseMapper.toLocal(dto), id: dto.id)
+    }
+    private func applyTodo(_ dto: TodoDTO) async {
+        if await hasPending("todos", key: dto.id) { return }
+        await replaceLocal(TodoMapper.toLocal(dto), id: dto.id)
+    }
+    private func applyHabit(_ dto: HabitDefinitionDTO) async {
+        if await hasPending("habits", key: dto.id) { return }
+        await replaceLocal(HabitMapper.toLocal(dto), id: dto.id)
+    }
     private func applyCheckin(_ dto: HabitRecordDTO) async {
+        let key = "\(dto.habit_id)|\(dto.record_date)"
+        if await hasPending("habit_checkins", key: key) { return }
         guard let db = try? AppDatabase.shared.getDB() else { return }
         _ = try? await db.write { db in
             var rec = HabitRecordMapper.toLocal(dto)
@@ -175,6 +188,17 @@ actor SyncEngine {
                 .deleteAll(db)
             try rec.insert(db)
         }
+    }
+
+    /// 本地是否仍有该记录的待推送变更(未 drain)
+    private func hasPending(_ entity: String, key: String) async -> Bool {
+        guard let db = try? AppDatabase.shared.getDB() else { return false }
+        let n = (try? await db.read { db in
+            try SyncOutbox
+                .filter(Column("entity") == entity && Column("recordKey") == key)
+                .fetchCount(db)
+        }) ?? 0
+        return n > 0
     }
     /// 按 id 删旧 + insert 服务端记录(insert 不触发 willUpdate,保留 updatedAt)
     private func replaceLocal<T: PersistableRecord & Sendable>(_ rec: T, id: String) async {
@@ -187,8 +211,19 @@ actor SyncEngine {
 
     // MARK: - pull(增量)
 
-    func pullAll() async {
-        await pullExpenses(); await pullHabits(); await pullCheckins(); await pullTodos()
+    func pullAll() async { await pull(entities: SyncOutbox.allEntities) }
+
+    /// 只拉取指定实体(页面按需调用,减少请求数);drain 始终推送全部 pending
+    func pull(entities: [String]) async {
+        for e in entities {
+            switch e {
+            case "expenses": await pullExpenses()
+            case "todos": await pullTodos()
+            case "habits": await pullHabits()
+            case "habit_checkins": await pullCheckins()
+            default: break
+            }
+        }
     }
     private func pullExpenses() async {
         await pullLoop(entity: "expenses", endpoint: { Endpoints.expenseChanges(cursor: $0) }, apply: { await self.applyExpense($0) })
@@ -231,16 +266,17 @@ actor SyncEngine {
 
     // MARK: - 周期入口
 
+    /// - Parameter entities: 本次 pull 的实体(默认全部);drain 始终推送全部 pending。
     /// - Parameter force: 用户驱动的刷新(页面出现)传 true,绕过防抖;后台/联网触发用默认 false。
-    func sync(force: Bool = false) async {
+    func sync(entities: [String] = SyncOutbox.allEntities, force: Bool = false) async {
         guard TokenManager.shared.isLoggedIn else { return }
         if isSyncing { return }
         if !force && Date().timeIntervalSince(lastSyncAt) < minInterval { return }
         isSyncing = true
         defer { isSyncing = false; lastSyncAt = Date() }
-        logger.info("sync 周期开始 force=\(force)")
+        logger.info("sync 周期开始 force=\(force) entities=\(entities)")
         await drainOutbox()
-        await pullAll()
+        await pull(entities: entities)
         logger.info("sync 周期完成")
     }
 }

@@ -29,9 +29,9 @@ final class TodoViewModel {
         Task {
             defer { isLoading = false }
 
-            // 从后端同步待办数据
+            // 从后端同步待办数据(仅拉 todos)
             if TokenManager.shared.isLoggedIn {
-                await SyncEngine.shared.sync(force: true)
+                await SyncEngine.shared.sync(entities: ["todos"], force: true)
             }
 
             do {

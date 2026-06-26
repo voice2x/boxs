@@ -23,9 +23,9 @@ final class HabitViewModel {
         Task {
             defer { isLoading = false }
 
-            // 从后端同步习惯数据
+            // 从后端同步习惯数据(仅拉 habits + checkins)
             if TokenManager.shared.isLoggedIn {
-                await SyncEngine.shared.sync(force: true)
+                await SyncEngine.shared.sync(entities: ["habits", "habit_checkins"], force: true)
             }
 
             do {
