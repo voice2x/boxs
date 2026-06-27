@@ -165,7 +165,7 @@ pub async fn expense_changes(
     claims: VerifiedUser,
     axum::extract::Query(q): axum::extract::Query<ChangesQuery>,
 ) -> Result<Json<expense::ChangesResponseExpense>, AppError> {
-    let uid = uuid::Uuid::parse_str(&claims.user_id).map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = claims.uid()?;
     let resp = expense::changes(&state.pool, uid, parse_cursor(&q)?, q.limit.unwrap_or(200)).await?;
     Ok(Json(resp))
 }
@@ -175,7 +175,7 @@ pub async fn expense_batch(
     claims: VerifiedUser,
     Json(body): Json<BatchRequest<expense::ExpenseRecord>>,
 ) -> Result<Json<Vec<crate::data::sync::BatchResult<expense::ExpenseRecord>>>, AppError> {
-    let uid = uuid::Uuid::parse_str(&claims.user_id).map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = claims.uid()?;
     let out = expense::batch(&state.pool, uid, body).await?;
     Ok(Json(out))
 }
@@ -185,7 +185,7 @@ pub async fn habit_changes(
     claims: VerifiedUser,
     axum::extract::Query(q): axum::extract::Query<ChangesQuery>,
 ) -> Result<Json<crate::data::sync::ChangesResponse<habit::HabitDefinition>>, AppError> {
-    let uid = uuid::Uuid::parse_str(&claims.user_id).map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = claims.uid()?;
     let resp = habit::definition_changes(&state.pool, uid, parse_cursor(&q)?, q.limit.unwrap_or(200)).await?;
     Ok(Json(resp))
 }
@@ -195,7 +195,7 @@ pub async fn habit_batch(
     claims: VerifiedUser,
     Json(body): Json<BatchRequest<habit::HabitDefinition>>,
 ) -> Result<Json<Vec<crate::data::sync::BatchResult<habit::HabitDefinition>>>, AppError> {
-    let uid = uuid::Uuid::parse_str(&claims.user_id).map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = claims.uid()?;
     let out = habit::definition_batch(&state.pool, uid, body).await?;
     Ok(Json(out))
 }
@@ -205,7 +205,7 @@ pub async fn checkin_changes(
     claims: VerifiedUser,
     axum::extract::Query(q): axum::extract::Query<ChangesQuery>,
 ) -> Result<Json<crate::data::sync::ChangesResponse<habit::HabitRecord>>, AppError> {
-    let uid = uuid::Uuid::parse_str(&claims.user_id).map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = claims.uid()?;
     let resp = habit::checkin_changes(&state.pool, uid, parse_cursor(&q)?, q.limit.unwrap_or(200)).await?;
     Ok(Json(resp))
 }
@@ -215,7 +215,7 @@ pub async fn checkin_batch(
     claims: VerifiedUser,
     Json(body): Json<BatchRequest<habit::CheckinChange>>,
 ) -> Result<Json<Vec<crate::data::sync::BatchResult<habit::HabitRecord>>>, AppError> {
-    let uid = uuid::Uuid::parse_str(&claims.user_id).map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = claims.uid()?;
     let out = habit::checkin_batch(&state.pool, uid, body).await?;
     Ok(Json(out))
 }
@@ -225,7 +225,7 @@ pub async fn todo_changes(
     claims: VerifiedUser,
     axum::extract::Query(q): axum::extract::Query<ChangesQuery>,
 ) -> Result<Json<crate::data::sync::ChangesResponse<todo::TodoRecord>>, AppError> {
-    let uid = uuid::Uuid::parse_str(&claims.user_id).map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = claims.uid()?;
     let resp = todo::changes(&state.pool, uid, parse_cursor(&q)?, q.limit.unwrap_or(200)).await?;
     Ok(Json(resp))
 }
@@ -235,7 +235,7 @@ pub async fn todo_batch(
     claims: VerifiedUser,
     Json(body): Json<BatchRequest<todo::TodoRecord>>,
 ) -> Result<Json<Vec<crate::data::sync::BatchResult<todo::TodoRecord>>>, AppError> {
-    let uid = uuid::Uuid::parse_str(&claims.user_id).map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = claims.uid()?;
     let out = todo::batch(&state.pool, uid, body).await?;
     Ok(Json(out))
 }

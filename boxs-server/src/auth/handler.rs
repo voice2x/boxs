@@ -248,8 +248,7 @@ pub async fn logout(
     State(state): State<Arc<AppState>>,
     claims: crate::auth::jwt::VerifiedUser,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let uid = uuid::Uuid::parse_str(&claims.user_id)
-        .map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = claims.uid()?;
 
     sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
         .bind(uid)
@@ -266,8 +265,7 @@ pub async fn change_password(
     claims: crate::auth::jwt::VerifiedUser,
     Json(body): Json<ChangePasswordRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let uid = uuid::Uuid::parse_str(&claims.user_id)
-        .map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = claims.uid()?;
 
     let user = sqlx::query_as::<_, crate::auth::User>(
         "SELECT id, email, password_hash, display_name, avatar_url,
@@ -306,8 +304,7 @@ pub async fn me(
     State(state): State<Arc<AppState>>,
     claims: crate::auth::jwt::VerifiedUser,
 ) -> Result<Json<UserResponse>, AppError> {
-    let uid = uuid::Uuid::parse_str(&claims.user_id)
-        .map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = claims.uid()?;
 
     let user = sqlx::query_as::<_, crate::auth::User>(
         "SELECT id, email, password_hash, display_name, avatar_url,

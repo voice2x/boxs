@@ -54,8 +54,7 @@ pub async fn create(
     claims: VerifiedUser,
     Json(body): Json<CreateTodoRequest>,
 ) -> Result<Json<TodoRecord>, AppError> {
-    let uid = uuid::Uuid::parse_str(&claims.user_id)
-        .map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = claims.uid()?;
 
     let record = sqlx::query_as::<_, TodoRecord>(
         "INSERT INTO todo_records (user_id, title, note, due_date, due_time, priority)
@@ -80,8 +79,7 @@ pub async fn list(
     claims: VerifiedUser,
     axum::extract::Query(query): axum::extract::Query<ListTodosQuery>,
 ) -> Result<Json<Vec<TodoRecord>>, AppError> {
-    let uid = uuid::Uuid::parse_str(&claims.user_id)
-        .map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = claims.uid()?;
 
     let status_filter = query.status.unwrap_or_else(|| "pending".into());
 
@@ -114,8 +112,7 @@ pub async fn update(
     axum::extract::Path(id): axum::extract::Path<uuid::Uuid>,
     Json(body): Json<UpdateTodoRequest>,
 ) -> Result<Json<TodoRecord>, AppError> {
-    let uid = uuid::Uuid::parse_str(&claims.user_id)
-        .map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = claims.uid()?;
 
     let record = sqlx::query_as::<_, TodoRecord>(
         "SELECT id, user_id, title, note, due_date, due_time, priority,
@@ -157,8 +154,7 @@ pub async fn delete(
     claims: VerifiedUser,
     axum::extract::Path(id): axum::extract::Path<uuid::Uuid>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let uid = uuid::Uuid::parse_str(&claims.user_id)
-        .map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = claims.uid()?;
 
     let result = sqlx::query(
         "UPDATE todo_records SET deleted_at = now() WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL",
@@ -180,8 +176,7 @@ pub async fn complete(
     claims: VerifiedUser,
     axum::extract::Path(id): axum::extract::Path<uuid::Uuid>,
 ) -> Result<Json<TodoRecord>, AppError> {
-    let uid = uuid::Uuid::parse_str(&claims.user_id)
-        .map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = claims.uid()?;
 
     let updated = sqlx::query_as::<_, TodoRecord>(
         "UPDATE todo_records

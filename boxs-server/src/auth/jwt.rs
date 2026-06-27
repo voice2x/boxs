@@ -24,6 +24,13 @@ pub struct VerifiedUser {
     pub tier: String,
 }
 
+impl VerifiedUser {
+    /// 解析 user_id 为 Uuid(各 handler 复用,避免重复 parse_str + map_err)
+    pub fn uid(&self) -> Result<uuid::Uuid, AppError> {
+        uuid::Uuid::parse_str(&self.user_id).map_err(|e| AppError::BadRequest(e.to_string()))
+    }
+}
+
 /// 让 VerifiedUser 可以直接作为 handler 参数（从 request extensions 提取）
 impl<S: Send + Sync> axum::extract::FromRequestParts<S> for VerifiedUser {
     type Rejection = AppError;

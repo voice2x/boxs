@@ -78,8 +78,7 @@ pub async fn create(
     claims: VerifiedUser,
     Json(body): Json<CreateExpenseRequest>,
 ) -> Result<Json<ExpenseRecord>, AppError> {
-    let uid = uuid::Uuid::parse_str(&claims.user_id)
-        .map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = claims.uid()?;
 
     let record = sqlx::query_as::<_, ExpenseRecord>(
         "INSERT INTO expense_records (user_id, record_type, amount_cents, category, note, record_date)
@@ -104,8 +103,7 @@ pub async fn list(
     claims: VerifiedUser,
     axum::extract::Query(query): axum::extract::Query<ListExpensesQuery>,
 ) -> Result<Json<ExpenseListResponse>, AppError> {
-    let uid = uuid::Uuid::parse_str(&claims.user_id)
-        .map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = claims.uid()?;
 
     let page = query.page.unwrap_or(1).max(1);
     let page_size = query.page_size.unwrap_or(20).min(100);
@@ -196,8 +194,7 @@ pub async fn update(
     axum::extract::Path(id): axum::extract::Path<uuid::Uuid>,
     Json(body): Json<UpdateExpenseRequest>,
 ) -> Result<Json<ExpenseRecord>, AppError> {
-    let uid = uuid::Uuid::parse_str(&claims.user_id)
-        .map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = claims.uid()?;
 
     let record = sqlx::query_as::<_, ExpenseRecord>(
         "SELECT id, user_id, record_type, amount_cents, category, note, record_date,
@@ -241,8 +238,7 @@ pub async fn delete(
     claims: VerifiedUser,
     axum::extract::Path(id): axum::extract::Path<uuid::Uuid>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let uid = uuid::Uuid::parse_str(&claims.user_id)
-        .map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = claims.uid()?;
 
     let result = sqlx::query(
         "UPDATE expense_records SET deleted_at = now() WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL",
@@ -264,8 +260,7 @@ pub async fn stats(
     claims: VerifiedUser,
     axum::extract::Query(query): axum::extract::Query<ListExpensesQuery>,
 ) -> Result<Json<ExpenseStats>, AppError> {
-    let uid = uuid::Uuid::parse_str(&claims.user_id)
-        .map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = claims.uid()?;
 
     let (start_date, end_date) = match &query.month {
         Some(m) => {

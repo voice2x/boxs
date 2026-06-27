@@ -80,8 +80,7 @@ pub async fn create(
     claims: VerifiedUser,
     Json(body): Json<CreateHabitRequest>,
 ) -> Result<Json<HabitDefinition>, AppError> {
-    let uid = uuid::Uuid::parse_str(&claims.user_id)
-        .map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = claims.uid()?;
 
     let habit = sqlx::query_as::<_, HabitDefinition>(
         "INSERT INTO habit_definitions (user_id, name, emoji, frequency, target_value, unit)
@@ -105,8 +104,7 @@ pub async fn list(
     State(state): State<Arc<AppState>>,
     claims: VerifiedUser,
 ) -> Result<Json<Vec<HabitDefinition>>, AppError> {
-    let uid = uuid::Uuid::parse_str(&claims.user_id)
-        .map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = claims.uid()?;
 
     let habits = sqlx::query_as::<_, HabitDefinition>(
         "SELECT id, user_id, name, emoji, frequency, target_value, unit,
@@ -128,8 +126,7 @@ pub async fn update(
     axum::extract::Path(id): axum::extract::Path<uuid::Uuid>,
     Json(body): Json<UpdateHabitRequest>,
 ) -> Result<Json<HabitDefinition>, AppError> {
-    let uid = uuid::Uuid::parse_str(&claims.user_id)
-        .map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = claims.uid()?;
 
     let habit = sqlx::query_as::<_, HabitDefinition>(
         "SELECT id, user_id, name, emoji, frequency, target_value, unit,
@@ -173,8 +170,7 @@ pub async fn delete(
     claims: VerifiedUser,
     axum::extract::Path(id): axum::extract::Path<uuid::Uuid>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let uid = uuid::Uuid::parse_str(&claims.user_id)
-        .map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = claims.uid()?;
 
     let result = sqlx::query(
         "UPDATE habit_definitions SET is_active = false, updated_at = now() WHERE id = $1 AND user_id = $2",
@@ -196,8 +192,7 @@ pub async fn checkin(
     claims: VerifiedUser,
     Json(body): Json<CheckinRequest>,
 ) -> Result<Json<HabitRecord>, AppError> {
-    let uid = uuid::Uuid::parse_str(&claims.user_id)
-        .map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = claims.uid()?;
 
     // Verify habit belongs to user
     let _habit = sqlx::query_as::<_, HabitDefinition>(
@@ -260,8 +255,7 @@ pub async fn calendar(
     claims: VerifiedUser,
     axum::extract::Query(query): axum::extract::Query<CalendarQuery>,
 ) -> Result<Json<CalendarResponse>, AppError> {
-    let uid = uuid::Uuid::parse_str(&claims.user_id)
-        .map_err(|e| AppError::BadRequest(e.to_string()))?;
+    let uid = claims.uid()?;
 
     let habit = sqlx::query_as::<_, HabitDefinition>(
         "SELECT id, user_id, name, emoji, frequency, target_value, unit,
