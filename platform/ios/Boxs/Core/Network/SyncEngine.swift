@@ -4,16 +4,26 @@ import os.log
 
 /// 同步引擎:本地写 → 发件箱;周期 = drain(推送) → pull(拉取)。
 /// 冲突由服务端 LWW 裁决;本地采纳返回的胜出版本。
+/// db 与 api 可注入(单测用内存 GRDB + mock 网络)。
 actor SyncEngine {
     static let shared = SyncEngine()
 
-    private let api = APIClient.shared
+    private let api: any SyncNetworking
+    private let getDB: @Sendable () throws -> DatabaseQueue
     private let logger = Logger(subsystem: "com.boxs.app", category: "SyncEngine")
     private let batchSize = 50
     private let maxAttempts = 10
     private let minInterval: TimeInterval = 30
     private var lastSyncAt: Date = .distantPast
     private var isSyncing = false
+
+    init(api: any SyncNetworking = APIClient.shared,
+         getDB: @escaping @Sendable () throws -> DatabaseQueue = { try AppDatabase.shared.getDB() }) {
+        self.api = api
+        self.getDB = getDB
+    }
+
+    private func db() -> DatabaseQueue? { try? getDB() }
 
     // MARK: - 入队（本地写后调用）
 
@@ -65,102 +75,106 @@ actor SyncEngine {
 
     private func enqueue<C: Encodable>(_ entity: String, key: String, _ change: C) async {
         guard let payload = try? JSONEncoder.boxs.encode(change) else { return }
-        guard let db = try? AppDatabase.shared.getDB() else { return }
-        _ = try? await db.write { try SyncOutbox.enqueue($0, entity: entity, recordKey: key, payload: payload) }
+        guard let dbq = db() else { return }
+        _ = try? await dbq.write { try SyncOutbox.enqueue($0, entity: entity, recordKey: key, payload: payload) }
     }
 
     // MARK: - 本地读写助手
 
     private func saveLocal<T: PersistableRecord & Sendable>(_ rec: T) async {
-        guard let db = try? AppDatabase.shared.getDB() else { return }
-        _ = try? await db.write { db in var r = rec; try r.save(db) }
+        guard let dbq = db() else { return }
+        _ = try? await dbq.write { db in var r = rec; try r.save(db) }
     }
     private func fetch<T>(_ type: T.Type, id: String) async -> T? where T: FetchableRecord & PersistableRecord & Sendable {
-        guard let db = try? AppDatabase.shared.getDB() else { return nil }
-        return try? await db.read { try T.fetchOne($0, key: id) }
+        guard let dbq = db() else { return nil }
+        return try? await dbq.read { try T.fetchOne($0, key: id) }
     }
 
-    // MARK: - drain(推送)
+    // MARK: - drain(推送)——一次查询读全部 outbox,按实体分组
 
     func drainOutbox() async {
-        await drainExpenses(); await drainTodos(); await drainHabits(); await drainCheckins()
-    }
-
-    private func drainExpenses() async {
-        guard let (rows, changes) = await collect("expenses", as: ExpenseChange.self), !changes.isEmpty else { return }
-        do {
-            let results: [BatchResult<ExpenseDTO>] = try await api.request(Endpoints.expenseBatch, body: BatchRequest(changes: changes))
-            await reconcile(rows, results) { await self.applyExpense($0) }
-        } catch {
-            await bumpAttempts(ids: rows.map { $0.id }); logger.warning("drain expenses 失败: \(error.localizedDescription)")
+        guard let dbq = db() else { return }
+        let all = (try? await dbq.read { try SyncOutbox.order(Column("id").asc).fetchAll($0) }) ?? []
+        let grouped = Dictionary(grouping: all, by: \.entity)
+        await drain(grouped["expenses"] ?? [], endpoint: Endpoints.expenseBatch,
+                    change: ExpenseChange.self, dto: ExpenseDTO.self, keyFor: { $0.id }) { db, dto in
+            let rec = ExpenseMapper.toLocal(dto)
+            try db.execute(sql: "DELETE FROM expense_record WHERE id = ?", arguments: [rec.id])
+            var r = rec; try r.insert(db)
         }
-    }
-    private func drainTodos() async {
-        guard let (rows, changes) = await collect("todos", as: TodoChange.self), !changes.isEmpty else { return }
-        do {
-            let results: [BatchResult<TodoDTO>] = try await api.request(Endpoints.todoBatch, body: BatchRequest(changes: changes))
-            await reconcile(rows, results) { await self.applyTodo($0) }
-        } catch {
-            await bumpAttempts(ids: rows.map { $0.id }); logger.warning("drain todos 失败: \(error.localizedDescription)")
+        await drain(grouped["todos"] ?? [], endpoint: Endpoints.todoBatch,
+                    change: TodoChange.self, dto: TodoDTO.self, keyFor: { $0.id }) { db, dto in
+            let rec = TodoMapper.toLocal(dto)
+            try db.execute(sql: "DELETE FROM todo_record WHERE id = ?", arguments: [rec.id])
+            var r = rec; try r.insert(db)
         }
-    }
-    private func drainHabits() async {
-        guard let (rows, changes) = await collect("habits", as: HabitChange.self), !changes.isEmpty else { return }
-        do {
-            let results: [BatchResult<HabitDefinitionDTO>] = try await api.request(Endpoints.habitBatch, body: BatchRequest(changes: changes))
-            await reconcile(rows, results) { await self.applyHabit($0) }
-        } catch {
-            await bumpAttempts(ids: rows.map { $0.id }); logger.warning("drain habits 失败: \(error.localizedDescription)")
+        await drain(grouped["habits"] ?? [], endpoint: Endpoints.habitBatch,
+                    change: HabitChange.self, dto: HabitDefinitionDTO.self, keyFor: { $0.id }) { db, dto in
+            let rec = HabitMapper.toLocal(dto)
+            try db.execute(sql: "DELETE FROM habit_definition WHERE id = ?", arguments: [rec.id])
+            var r = rec; try r.insert(db)
         }
-    }
-    private func drainCheckins() async {
-        guard let (rows, changes) = await collect("habit_checkins", as: CheckinChange.self), !changes.isEmpty else { return }
-        do {
-            let results: [BatchResult<HabitRecordDTO>] = try await api.request(Endpoints.checkinBatch, body: BatchRequest(changes: changes))
-            await reconcile(rows, results) { await self.applyCheckin($0) }
-        } catch {
-            await bumpAttempts(ids: rows.map { $0.id }); logger.warning("drain checkins 失败: \(error.localizedDescription)")
+        await drain(grouped["habit_checkins"] ?? [], endpoint: Endpoints.checkinBatch,
+                    change: CheckinChange.self, dto: HabitRecordDTO.self,
+                    keyFor: { "\($0.habit_id)|\($0.record_date)" }) { db, dto in
+            var rec = HabitRecordMapper.toLocal(dto)
+            try HabitRecord.filter(Column("habitId") == rec.habitId && Column("recordDate") == rec.recordDate).deleteAll(db)
+            try rec.insert(db)
         }
     }
 
-    /// 取某实体一批待发,payload 解码失败的行整体跳过(保持 rows 与 changes 一一对齐)
-    private func collect<C: Decodable>(_ entity: String, as: C.Type) async -> ([SyncOutbox], [C])? {
-        guard let db = try? AppDatabase.shared.getDB() else { return nil }
-        let rows: [SyncOutbox]
-        do { rows = try await db.read { try SyncOutbox.pending($0, entity: entity, limit: batchSize) } }
-        catch { return nil }
-        var out: [SyncOutbox] = []; var changes: [C] = []
+    /// 解码 payload → 批量推送 → 批量对账(一个事务内应用 + 清 outbox / bump 死信)
+    private func drain<C: Codable & Sendable, D: Decodable & Sendable>(
+        _ rows: [SyncOutbox], endpoint: Endpoint, change: C.Type, dto: D.Type,
+        keyFor: @escaping @Sendable (D) -> String,
+        applyOne: @escaping @Sendable (Database, D) throws -> Void
+    ) async {
+        // 解码 payload(失败的行跳过,保持对齐)
+        var drows: [SyncOutbox] = []; var changes: [C] = []
         for r in rows {
             guard let c = try? JSONDecoder.boxs.decode(C.self, from: r.payload) else { continue }
-            out.append(r); changes.append(c)
+            drows.append(r); changes.append(c)
         }
-        return (out, changes)
+        guard !changes.isEmpty else { return }
+        do {
+            let results: [BatchResult<D>] = try await api.send(endpoint, body: BatchRequest(changes: changes))
+            await reconcileBatch(drows, results, applyOne: applyOne)
+        } catch {
+            await bumpAttempts(ids: drows.map { $0.id })
+            logger.warning("drain 失败: \(error.localizedDescription)")
+        }
     }
 
-    /// 逐条把服务端返回写回本地:applied/conflict 采纳并清 outbox;error(如归属失败)留待重试/死信
-    private func reconcile<D>(_ rows: [SyncOutbox], _ results: [BatchResult<D>], apply: (D) async -> Void) async {
-        for (i, row) in rows.enumerated() where i < results.count {
-            switch results[i].status {
-            case "applied", "conflict":
-                if let rec = results[i].record { await apply(rec) }
-                await deleteOutbox(id: row.id)
-            default:
-                await bumpAttempts(ids: [row.id])
+    /// drain 对账:applied/conflict 采纳服务端版本并清 outbox;error 留待重试/死信。全部在一个事务。
+    private func reconcileBatch<D: Sendable>(
+        _ rows: [SyncOutbox], _ results: [BatchResult<D>],
+        applyOne: @escaping @Sendable (Database, D) throws -> Void
+    ) async {
+        guard let dbq = db() else { return }
+        _ = try? await dbq.write { db in
+            for (i, row) in rows.enumerated() where i < results.count {
+                switch results[i].status {
+                case "applied", "conflict":
+                    if let rec = results[i].record { try applyOne(db, rec) }
+                    if let oid = row.id { try SyncOutbox.deleteOne(db, key: oid) }
+                default:
+                    if let oid = row.id, var r = try SyncOutbox.fetchOne(db, key: oid) {
+                        r.attempts += 1
+                        if r.attempts >= self.maxAttempts { r.dead = true }
+                        try r.update(db)
+                    }
+                }
             }
         }
     }
 
-    private func deleteOutbox(id: Int64?) async {
-        guard let id, let db = try? AppDatabase.shared.getDB() else { return }
-        _ = try? await db.write { try SyncOutbox.deleteOne($0, key: id) }
-    }
     private func bumpAttempts(ids: [Int64?]) async {
-        guard let db = try? AppDatabase.shared.getDB() else { return }
-        _ = try? await db.write { db in
+        guard let dbq = db() else { return }
+        _ = try? await dbq.write { db in
             for id in ids.compactMap({ $0 }) {
                 guard var r = try SyncOutbox.fetchOne(db, key: id) else { continue }
                 r.attempts += 1
-                if r.attempts >= maxAttempts { r.dead = true }   // 死信:标记而非删除,供 UI 提示
+                if r.attempts >= maxAttempts { r.dead = true }
                 try r.update(db)
             }
         }
@@ -168,118 +182,104 @@ actor SyncEngine {
 
     /// 死信数量(供 UI 展示"有同步失败")
     func deadLetterCount() async -> Int {
-        guard let db = try? AppDatabase.shared.getDB() else { return 0 }
-        return (try? await db.read { try SyncOutbox.deadCount($0) }) ?? 0
+        guard let dbq = db() else { return 0 }
+        return (try? await dbq.read { try SyncOutbox.deadCount($0) }) ?? 0
+    }
+
+    /// 待发数量(供 UI 展示"排队中")
+    func pendingCount() async -> Int {
+        guard let dbq = db() else { return 0 }
+        return (try? await dbq.read { try SyncOutbox.filter(Column("dead") == false).fetchCount($0) }) ?? 0
     }
 
     /// 重试全部死信(清标记,重新进入待发)
     func retryDeadLetters() async {
-        guard let db = try? AppDatabase.shared.getDB() else { return }
-        _ = try? await db.write { try SyncOutbox.resetDead($0) }
+        guard let dbq = db() else { return }
+        _ = try? await dbq.write { try SyncOutbox.resetDead($0) }
         await sync(force: true)
     }
 
-    // MARK: - apply(同步回写:delete+insert,绕过 willUpdate,保留服务端 updatedAt)
-
-    // 若该记录在本地尚有未推送的 outbox 行(待 drain),跳过——下个周期 drain 会以本地 updated_at 重新裁决,避免瞬时覆盖本地编辑。
-
-    private func applyExpense(_ dto: ExpenseDTO) async {
-        if await hasPending("expenses", key: dto.id) { return }
-        await replaceLocal(ExpenseMapper.toLocal(dto), id: dto.id)
-    }
-    private func applyTodo(_ dto: TodoDTO) async {
-        if await hasPending("todos", key: dto.id) { return }
-        await replaceLocal(TodoMapper.toLocal(dto), id: dto.id)
-    }
-    private func applyHabit(_ dto: HabitDefinitionDTO) async {
-        if await hasPending("habits", key: dto.id) { return }
-        await replaceLocal(HabitMapper.toLocal(dto), id: dto.id)
-    }
-    private func applyCheckin(_ dto: HabitRecordDTO) async {
-        let key = "\(dto.habit_id)|\(dto.record_date)"
-        if await hasPending("habit_checkins", key: key) { return }
-        guard let db = try? AppDatabase.shared.getDB() else { return }
-        _ = try? await db.write { db in
-            var rec = HabitRecordMapper.toLocal(dto)
-            try HabitRecord
-                .filter(Column("habitId") == rec.habitId && Column("recordDate") == rec.recordDate)
-                .deleteAll(db)
-            try rec.insert(db)
-        }
-    }
-
-    /// 本地是否仍有该记录的待推送变更(未 drain)
-    private func hasPending(_ entity: String, key: String) async -> Bool {
-        guard let db = try? AppDatabase.shared.getDB() else { return false }
-        let n = (try? await db.read { db in
-            try SyncOutbox
-                .filter(Column("entity") == entity && Column("recordKey") == key)
-                .fetchCount(db)
-        }) ?? 0
-        return n > 0
-    }
-    /// 按 id 删旧 + insert 服务端记录(insert 不触发 willUpdate,保留 updatedAt)
-    private func replaceLocal<T: PersistableRecord & Sendable>(_ rec: T, id: String) async {
-        guard let db = try? AppDatabase.shared.getDB() else { return }
-        _ = try? await db.write { db in
-            try db.execute(sql: "DELETE FROM \(T.databaseTableName) WHERE id = ?", arguments: [id])
-            var r = rec; try r.insert(db)
-        }
-    }
-
-    // MARK: - pull(增量)
+    // MARK: - pull(增量)——每页一个事务批量应用
 
     func pullAll() async { await pull(entities: SyncOutbox.allEntities) }
 
-    /// 只拉取指定实体(页面按需调用,减少请求数);drain 始终推送全部 pending
+    /// 只拉取指定实体(页面按需调用);drain 始终推送全部 pending
     func pull(entities: [String]) async {
         for e in entities {
             switch e {
-            case "expenses": await pullExpenses()
-            case "todos": await pullTodos()
-            case "habits": await pullHabits()
-            case "habit_checkins": await pullCheckins()
+            case "expenses": await pullLoop(entity: "expenses", endpoint: { Endpoints.expenseChanges(cursor: $0) },
+                                            keyFor: { (d: ExpenseDTO) in d.id }) { db, dto in
+                let rec = ExpenseMapper.toLocal(dto)
+                try db.execute(sql: "DELETE FROM expense_record WHERE id = ?", arguments: [rec.id])
+                var r = rec; try r.insert(db)
+            }
+            case "todos": await pullLoop(entity: "todos", endpoint: { Endpoints.todoChanges(cursor: $0) },
+                                         keyFor: { (d: TodoDTO) in d.id }) { db, dto in
+                let rec = TodoMapper.toLocal(dto)
+                try db.execute(sql: "DELETE FROM todo_record WHERE id = ?", arguments: [rec.id])
+                var r = rec; try r.insert(db)
+            }
+            case "habits": await pullLoop(entity: "habits", endpoint: { Endpoints.habitChanges(cursor: $0) },
+                                          keyFor: { (d: HabitDefinitionDTO) in d.id }) { db, dto in
+                let rec = HabitMapper.toLocal(dto)
+                try db.execute(sql: "DELETE FROM habit_definition WHERE id = ?", arguments: [rec.id])
+                var r = rec; try r.insert(db)
+            }
+            case "habit_checkins": await pullLoop(entity: "habit_checkins", endpoint: { Endpoints.checkinChanges(cursor: $0) },
+                                                  keyFor: { (d: HabitRecordDTO) in "\(d.habit_id)|\(d.record_date)" }) { db, dto in
+                var rec = HabitRecordMapper.toLocal(dto)
+                try HabitRecord.filter(Column("habitId") == rec.habitId && Column("recordDate") == rec.recordDate).deleteAll(db)
+                try rec.insert(db)
+            }
             default: break
             }
         }
     }
-    private func pullExpenses() async {
-        await pullLoop(entity: "expenses", endpoint: { Endpoints.expenseChanges(cursor: $0) }, apply: { await self.applyExpense($0) })
-    }
-    private func pullHabits() async {
-        await pullLoop(entity: "habits", endpoint: { Endpoints.habitChanges(cursor: $0) }, apply: { await self.applyHabit($0) })
-    }
-    private func pullCheckins() async {
-        await pullLoop(entity: "habit_checkins", endpoint: { Endpoints.checkinChanges(cursor: $0) }, apply: { await self.applyCheckin($0) })
-    }
-    private func pullTodos() async {
-        await pullLoop(entity: "todos", endpoint: { Endpoints.todoChanges(cursor: $0) }, apply: { await self.applyTodo($0) })
-    }
 
-    /// 翻页拉取直到 next_cursor == nil;每页 upsert 后存新游标
+    /// 翻页拉取直到 next_cursor == nil;每页用 applyBatch 批量应用后存新游标
     private func pullLoop<D: Decodable & Sendable>(
         entity: String,
-        endpoint: (String?) -> Endpoint,
-        apply: (D) async -> Void
+        endpoint: @escaping @Sendable (String?) -> Endpoint,
+        keyFor: @escaping @Sendable (D) -> String,
+        applyOne: @escaping @Sendable (Database, D) throws -> Void
     ) async {
         var cursor = await readCursor(entity)
         repeat {
             let resp: ChangesResponse<D>
-            do { resp = try await api.request(endpoint(cursor)) }
+            do { resp = try await api.send(endpoint(cursor), body: nil) }
             catch { logger.warning("pull \(entity) 失败: \(error.localizedDescription)"); return }
-            for item in resp.items { await apply(item) }
+            await applyBatch(resp.items, entity: entity, keyFor: keyFor, applyOne: applyOne)
             cursor = resp.next_cursor
             await writeCursor(entity, cursor)
         } while cursor != nil
     }
 
+    /// 一页一次事务:批量取 pending key,跳过 pending 的(不覆盖未 drain 的本地编辑),其余批量 delete+insert
+    private func applyBatch<D: Sendable>(
+        _ items: [D], entity: String,
+        keyFor: @escaping @Sendable (D) -> String,
+        applyOne: @escaping @Sendable (Database, D) throws -> Void
+    ) async {
+        guard let dbq = db() else { return }
+        _ = try? await dbq.write { db in
+            let pendingKeys = Set((try? SyncOutbox
+                .filter(Column("entity") == entity)
+                .fetchAll(db)
+                .map(\.recordKey)) ?? [])
+            for item in items {
+                guard !pendingKeys.contains(keyFor(item)) else { continue }
+                try applyOne(db, item)
+            }
+        }
+    }
+
     private func readCursor(_ entity: String) async -> String? {
-        guard let db = try? AppDatabase.shared.getDB() else { return nil }
-        return try? await db.read { try SyncCursor.get($0, entity: entity) }
+        guard let dbq = db() else { return nil }
+        return try? await dbq.read { try SyncCursor.get($0, entity: entity) }
     }
     private func writeCursor(_ entity: String, _ cursor: String?) async {
-        guard let db = try? AppDatabase.shared.getDB() else { return }
-        _ = try? await db.write { try SyncCursor.set($0, entity: entity, cursor: cursor) }
+        guard let dbq = db() else { return }
+        _ = try? await dbq.write { try SyncCursor.set($0, entity: entity, cursor: cursor) }
     }
 
     // MARK: - 周期入口

@@ -26,11 +26,13 @@
 		26BAB6B78BD6B9926971C2C1 /* ConfirmSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9ABBDB2515D9402DFFFC4B58 /* ConfirmSheet.swift */; };
 		26FED8645263CB8B21FD44CB /* NLUResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFC3EB9316BF853D234650E0 /* NLUResult.swift */; };
 		271BC10FCF8A6733CD802E88 /* AppRadius.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2050ADE93F648BDBCC040AC2 /* AppRadius.swift */; };
+		2AEA3F4CB9D6374F5BEF7720 /* SyncEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9C9DF92AF1E595EC8D9CFC3 /* SyncEngineTests.swift */; };
 		2EFF26BC65FDEF5D617F0B65 /* MultiIntentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 808A0C4066AE878A2D074E70 /* MultiIntentTests.swift */; };
 		3C598F9B095CE97615FB2BE9 /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0646C35D2A20021CDC99900 /* User.swift */; };
 		44F5E6E0295D57CE0B807115 /* LenientDateParsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E34FB811E63DCF8B815B8E71 /* LenientDateParsingTests.swift */; };
 		49B98710D13EA751B7E8CC84 /* TodoListPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAE338A71111E7C4252D79F4 /* TodoListPage.swift */; };
 		4D13F978638B40D13BFF8406 /* AppSize.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E57281E09A50B7D05AF8CAA /* AppSize.swift */; };
+		4D438F6853F3969DB070E0ED /* SyncNetworking.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5733C27E94DA124C084C060A /* SyncNetworking.swift */; };
 		513B18AB2CFF9AA715968375 /* NLUOrchestrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 557760FEA25E8A0B70C57B9E /* NLUOrchestrator.swift */; };
 		5495B8A2BBF59D5C6BB7619A /* Todo.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEA16CB03DA0F92157B31DB2 /* Todo.swift */; };
 		57EE11FA279275C504024B47 /* AppColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF73CD2FE59E70881C8CEDD /* AppColors.swift */; };
@@ -121,6 +123,7 @@
 		52802AA4B3DD3BCBE29F7BBF /* LLMClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMClient.swift; sourceTree = "<group>"; };
 		557760FEA25E8A0B70C57B9E /* NLUOrchestrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NLUOrchestrator.swift; sourceTree = "<group>"; };
 		56B2BD3076C44ED4AFA9E08C /* SettingsPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsPage.swift; sourceTree = "<group>"; };
+		5733C27E94DA124C084C060A /* SyncNetworking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncNetworking.swift; sourceTree = "<group>"; };
 		5CF73CD2FE59E70881C8CEDD /* AppColors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppColors.swift; sourceTree = "<group>"; };
 		5E6585FBC68AF023B943B72F /* SingleIntentRuleEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SingleIntentRuleEngine.swift; sourceTree = "<group>"; };
 		5F5835FEA535A9887CB68B14 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
@@ -160,6 +163,7 @@
 		E06BD2DD92BA4022E1FED02B /* RuleEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuleEngineTests.swift; sourceTree = "<group>"; };
 		E34FB811E63DCF8B815B8E71 /* LenientDateParsingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LenientDateParsingTests.swift; sourceTree = "<group>"; };
 		E56B166AD93C2CBC19557EAA /* TodoRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodoRecord.swift; sourceTree = "<group>"; };
+		E9C9DF92AF1E595EC8D9CFC3 /* SyncEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncEngineTests.swift; sourceTree = "<group>"; };
 		EBF4CADE3F6E5A0BD60943A7 /* BoxsUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = BoxsUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		ED46A092953E3A7CA1F8FA12 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		F0646C35D2A20021CDC99900 /* User.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = User.swift; sourceTree = "<group>"; };
@@ -192,6 +196,7 @@
 			children = (
 				6CCA35C702CD50213C658E6C /* Database */,
 				6B2B3E299D039BA1EB3745F0 /* NLU */,
+				E9C9DF92AF1E595EC8D9CFC3 /* SyncEngineTests.swift */,
 				7D15D205D91DA35EA2B89032 /* SyncOutboxTests.swift */,
 			);
 			path = BoxsTests;
@@ -403,6 +408,7 @@
 				AA90D124BDC3C73C9B7CBA02 /* Endpoints.swift */,
 				BD9887CD8479E51A40187151 /* Mappers.swift */,
 				44A00220214C400403EDA921 /* SyncEngine.swift */,
+				5733C27E94DA124C084C060A /* SyncNetworking.swift */,
 				B8A0C1C684570AD88F07BB06 /* TokenManager.swift */,
 			);
 			path = Network;
@@ -593,6 +599,7 @@
 				15A1236310A9FE8BA5AF2145 /* SingleIntentRuleEngine.swift in Sources */,
 				A2847AD29A316CC9F310B3C8 /* SyncCursor.swift in Sources */,
 				222BAAD2318255CF1A58C456 /* SyncEngine.swift in Sources */,
+				4D438F6853F3969DB070E0ED /* SyncNetworking.swift in Sources */,
 				A0C1B626FA55A530518B5F4A /* SyncOutbox.swift in Sources */,
 				ECB161239D5A642E1A8123A5 /* TagView.swift in Sources */,
 				5495B8A2BBF59D5C6BB7619A /* Todo.swift in Sources */,
@@ -622,6 +629,7 @@
 				70AF69CCAD860BF2484269BD /* PreprocessorTests.swift in Sources */,
 				1C8C62493C1897DE806051CA /* RuleEngineTests.swift in Sources */,
 				9B52EEC434D1A7D4F9A5DEB6 /* SentenceSplitterTests.swift in Sources */,
+				2AEA3F4CB9D6374F5BEF7720 /* SyncEngineTests.swift in Sources */,
 				D410DCA9E2B726FFB5119572 /* SyncOutboxTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
