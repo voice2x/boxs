@@ -9,7 +9,7 @@ mod state;
 mod stt;
 mod data;
 
-use axum::routing::{delete, get, post, put};
+use axum::routing::{get, post, put};
 use std::sync::Arc;
 use state::AppState;
 
