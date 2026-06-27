@@ -441,7 +441,7 @@ pub async fn batch(
         .await?;
 
         let record = match applied {
-            Some(r) => BatchResult { status: "applied", record: r },
+            Some(r) => BatchResult { status: "applied", record: Some(r) },
             None => {
                 let existing = sqlx::query_as::<_, ExpenseRecord>(&format!(
                     "SELECT {EXPENSE_COLUMNS} FROM expense_records WHERE id = $1 AND user_id = $2"
@@ -451,7 +451,7 @@ pub async fn batch(
                 .fetch_optional(&mut *tx)
                 .await?
                 .ok_or_else(|| AppError::Internal("conflict 但行不存在".into()))?;
-                BatchResult { status: "conflict", record: existing }
+                BatchResult { status: "conflict", record: Some(existing) }
             }
         };
         out.push(record);
@@ -500,7 +500,7 @@ mod sync_tests {
         let out = batch(&pool, uid, BatchRequest { changes: vec![c.clone()] }).await.unwrap();
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].status, "applied");
-        assert_eq!(out[0].record.id, id);
+        assert_eq!(out[0].record.as_ref().unwrap().id, id);
     }
 
     #[sqlx::test]
@@ -533,7 +533,7 @@ mod sync_tests {
         newer.updated_at = Some(chrono::DateTime::parse_from_rfc3339("2026-06-03T00:00:00Z").unwrap().with_timezone(&chrono::Utc));
         let out = batch(&pool, uid, BatchRequest { changes: vec![newer.clone()] }).await.unwrap();
         assert_eq!(out[0].status, "applied");
-        assert_eq!(out[0].record.amount_cents, 999);
+        assert_eq!(out[0].record.as_ref().unwrap().amount_cents, 999);
     }
 
     #[sqlx::test]

@@ -265,14 +265,14 @@ pub async fn batch(
         .fetch_optional(&mut *tx).await?;
 
         let record = match applied {
-            Some(r) => BatchResult { status: "applied", record: r },
+            Some(r) => BatchResult { status: "applied", record: Some(r) },
             None => {
                 let existing = sqlx::query_as::<_, TodoRecord>(&format!(
                     "SELECT {TODO_COLUMNS} FROM todo_records WHERE id = $1 AND user_id = $2"
                 ))
                 .bind(c.id).bind(uid).fetch_optional(&mut *tx).await?
                 .ok_or_else(|| AppError::Internal("conflict 但行不存在".into()))?;
-                BatchResult { status: "conflict", record: existing }
+                BatchResult { status: "conflict", record: Some(existing) }
             }
         };
         out.push(record);

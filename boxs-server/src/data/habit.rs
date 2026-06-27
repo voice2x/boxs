@@ -383,14 +383,14 @@ pub async fn definition_batch(
         .fetch_optional(&mut *tx).await?;
 
         let record = match applied {
-            Some(r) => BatchResult { status: "applied", record: r },
+            Some(r) => BatchResult { status: "applied", record: Some(r) },
             None => {
                 let existing = sqlx::query_as::<_, HabitDefinition>(&format!(
                     "SELECT {HABIT_DEF_COLUMNS} FROM habit_definitions WHERE id = $1 AND user_id = $2"
                 ))
                 .bind(c.id).bind(uid).fetch_optional(&mut *tx).await?
                 .ok_or_else(|| AppError::Internal("conflict 但行不存在".into()))?;
-                BatchResult { status: "conflict", record: existing }
+                BatchResult { status: "conflict", record: Some(existing) }
             }
         };
         out.push(record);
@@ -498,7 +498,9 @@ pub async fn checkin_batch(
             sqlx::query_scalar("SELECT id FROM habit_definitions WHERE id=$1 AND user_id=$2")
                 .bind(c.habit_id).bind(uid).fetch_optional(&mut *tx).await?;
         if belongs.is_none() {
-            return Err(AppError::BadRequest("习惯不存在或不属于该用户".into()));
+            // 逐条独立:归属失败不 abort 整批,标记 error 跳过(客户端留待重试/死信)
+            out.push(BatchResult { status: "error", record: None });
+            continue;
         }
         let applied = sqlx::query_as::<_, HabitRecord>(&format!(
             "INSERT INTO habit_records (user_id, habit_id, value, note, record_date, updated_at)
@@ -513,7 +515,7 @@ pub async fn checkin_batch(
         .fetch_optional(&mut *tx).await?;
 
         let record = match applied {
-            Some(r) => BatchResult { status: "applied", record: r },
+            Some(r) => BatchResult { status: "applied", record: Some(r) },
             None => {
                 let existing = sqlx::query_as::<_, HabitRecord>(&format!(
                     "SELECT {HABIT_REC_COLUMNS} FROM habit_records
@@ -522,7 +524,7 @@ pub async fn checkin_batch(
                 .bind(c.habit_id).bind(c.record_date).bind(uid)
                 .fetch_optional(&mut *tx).await?
                 .ok_or_else(|| AppError::Internal("conflict 但行不存在".into()))?;
-                BatchResult { status: "conflict", record: existing }
+                BatchResult { status: "conflict", record: Some(existing) }
             }
         };
         out.push(record);
@@ -559,7 +561,7 @@ mod checkin_sync_tests {
         checkin_batch(&pool, uid, BatchRequest { changes: vec![c1] }).await.unwrap();
         let out = checkin_batch(&pool, uid, BatchRequest { changes: vec![c2] }).await.unwrap();
         assert_eq!(out[0].status, "applied");
-        assert_eq!(out[0].record.value, Some(2.0));
+        assert_eq!(out[0].record.as_ref().unwrap().value, Some(2.0));
         let n: i64 = sqlx::query_scalar("SELECT count(*) FROM habit_records WHERE habit_id=$1")
             .bind(hid).fetch_one(&pool).await.unwrap();
         assert_eq!(n, 1, "自然键应只一行");
@@ -574,6 +576,6 @@ mod checkin_sync_tests {
         let old = CheckinChange { habit_id: hid, record_date: rd, value: Some(1.0), note: None, updated_at: ts("2026-06-01T00:00:00Z") };
         let out = checkin_batch(&pool, uid, BatchRequest { changes: vec![old] }).await.unwrap();
         assert_eq!(out[0].status, "conflict");
-        assert_eq!(out[0].record.value, Some(5.0), "胜出版本不变");
+        assert_eq!(out[0].record.as_ref().unwrap().value, Some(5.0), "胜出版本不变");
     }
 }

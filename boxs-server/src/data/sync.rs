@@ -42,8 +42,8 @@ pub struct BatchRequest<T> {
 
 #[derive(Debug, serde::Serialize)]
 pub struct BatchResult<T: Serialize> {
-    pub status: &'static str, // "applied" | "conflict"
-    pub record: T,
+    pub status: &'static str, // "applied" | "conflict" | "error"
+    pub record: Option<T>,
 }
 
 #[cfg(test)]

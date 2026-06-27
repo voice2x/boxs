@@ -137,11 +137,16 @@ actor SyncEngine {
         return (out, changes)
     }
 
-    /// 逐条把服务端返回(胜出版本)写回本地,删除对应 outbox 行
+    /// 逐条把服务端返回写回本地:applied/conflict 采纳并清 outbox;error(如归属失败)留待重试/死信
     private func reconcile<D>(_ rows: [SyncOutbox], _ results: [BatchResult<D>], apply: (D) async -> Void) async {
         for (i, row) in rows.enumerated() where i < results.count {
-            await apply(results[i].record)        // applied 与 conflict 都采纳服务端版本
-            await deleteOutbox(id: row.id)
+            switch results[i].status {
+            case "applied", "conflict":
+                if let rec = results[i].record { await apply(rec) }
+                await deleteOutbox(id: row.id)
+            default:
+                await bumpAttempts(ids: [row.id])
+            }
         }
     }
 

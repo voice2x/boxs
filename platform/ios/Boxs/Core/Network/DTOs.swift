@@ -12,8 +12,8 @@ struct ChangesResponse<D: Decodable & Sendable>: Decodable, Sendable {
 }
 
 struct BatchResult<D: Decodable & Sendable>: Decodable, Sendable {
-    let status: String   // "applied" | "conflict"
-    let record: D
+    let status: String   // "applied" | "conflict" | "error"
+    let record: D?
 }
 
 // MARK: - Expense DTOs
