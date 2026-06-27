@@ -40,8 +40,10 @@ final class HomeViewModel {
             let startOfDay = calendar.startOfDay(for: now)
             let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now))!
 
-            // 一次读取聚合四项统计(避免多次 db.read)
-            let stats = try await db.read { db in
+            // 一次读取:统计 + 最近记录原始数据(RecordItem 构建留在闭包外,因 formatter 是 main-actor 方法)
+            let d = try await db.read { db -> (todoCount: Int, todoDone: Int, expenseCents: Int, habitTotal: Int, habitChecked: Int,
+                                               recentExpenses: [ExpenseRecord], recentHabits: [HabitRecord], recentTodos: [TodoRecord],
+                                               habitNames: [String: String]) in
                 let todos = try TodoRecord
                     .filter(Column("isDeleted") == false)
                     .filter(Column("createdAt") >= startOfDay)
@@ -53,76 +55,64 @@ final class HomeViewModel {
                     .fetchAll(db)
                 let habits = try HabitDefinition.filter(Column("isActive") == true).fetchAll(db)
                 let habitRecords = try HabitRecord.filter(Column("recordDate") >= startOfDay).fetchAll(db)
+
+                let recentExpenses = try ExpenseRecord
+                    .filter(Column("isDeleted") == false)
+                    .order(Column("createdAt").desc).limit(10).fetchAll(db)
+                let recentHabits = try HabitRecord.order(Column("createdAt").desc).limit(5).fetchAll(db)
+                let recentTodos = try TodoRecord
+                    .filter(Column("isDeleted") == false)
+                    .order(Column("createdAt").desc).limit(5).fetchAll(db)
+                let nameMap = Dictionary(uniqueKeysWithValues: habits.map { ($0.id, $0.name) })
+
                 return (todoCount: todos.count,
                         todoDone: todos.filter(\.isCompleted).count,
                         expenseCents: expenses.reduce(0) { $0 + $1.amountCents },
                         habitTotal: habits.count,
-                        habitChecked: habitRecords.count)
+                        habitChecked: habitRecords.count,
+                        recentExpenses: recentExpenses, recentHabits: recentHabits, recentTodos: recentTodos,
+                        habitNames: nameMap)
             }
 
-            self.todayTodoCount = stats.todoCount
-            self.todayTodoCompleted = stats.todoDone
-            self.monthExpenseCents = stats.expenseCents
-            self.todayHabitTotal = stats.habitTotal
-            self.todayHabitChecked = stats.habitChecked
+            self.todayTodoCount = d.todoCount
+            self.todayTodoCompleted = d.todoDone
+            self.monthExpenseCents = d.expenseCents
+            self.todayHabitTotal = d.habitTotal
+            self.todayHabitChecked = d.habitChecked
 
-            try await loadRecentRecords(db: db)
+            var items: [RecordItem] = []
+            for expense in d.recentExpenses {
+                let category = ExpenseCategory(rawValue: expense.category) ?? .other
+                items.append(RecordItem(
+                    id: expense.id, emoji: category.emoji,
+                    title: expense.note ?? expense.category,
+                    subtitle: formatExpenseSubtitle(expense),
+                    trailing: expense.signedDisplayAmount,
+                    trailingColor: expense.type == "expense" ? "expense" : "income",
+                    type: .expense, createdAt: expense.createdAt
+                ))
+            }
+            for record in d.recentHabits {
+                items.append(RecordItem(
+                    id: record.id, emoji: "✓", title: d.habitNames[record.habitId] ?? "习惯",
+                    subtitle: record.value ?? "已打卡", trailing: "✓",
+                    trailingColor: "primary", type: .habit, createdAt: record.createdAt
+                ))
+            }
+            for todo in d.recentTodos {
+                items.append(RecordItem(
+                    id: todo.id, emoji: "📝", title: todo.content,
+                    subtitle: formatTodoSubtitle(todo),
+                    trailing: todo.isCompleted ? "✓" : "○",
+                    trailingColor: todo.isCompleted ? "primary" : "hint",
+                    type: .todo, createdAt: todo.createdAt
+                ))
+            }
+            items.sort { $0.createdAt > $1.createdAt }
+            self.recentRecords = Array(items.prefix(20))
         } catch {
             logger.error("加载主页数据失败: \(error)")
         }
-    }
-
-    private func loadRecentRecords(db: DatabaseQueue) async throws {
-        // 一次读取:记账/打卡/待办 + 全部习惯定义(批量建名表,消除 N+1)
-        let fetched = try await db.read { db -> ([ExpenseRecord], [HabitRecord], [TodoRecord], [String: String]) in
-            let expenses = try ExpenseRecord
-                .filter(Column("isDeleted") == false)
-                .order(Column("createdAt").desc)
-                .limit(10)
-                .fetchAll(db)
-            let habitRecords = try HabitRecord.order(Column("createdAt").desc).limit(5).fetchAll(db)
-            let todos = try TodoRecord
-                .filter(Column("isDeleted") == false)
-                .order(Column("createdAt").desc)
-                .limit(5)
-                .fetchAll(db)
-            let habits = try HabitDefinition.fetchAll(db)
-            let nameMap = Dictionary(uniqueKeysWithValues: habits.map { ($0.id, $0.name) })
-            return (expenses, habitRecords, todos, nameMap)
-        }
-        let (expenses, habitRecords, todos, habitNames) = fetched
-
-        var items: [RecordItem] = []
-        for expense in expenses {
-            let category = ExpenseCategory(rawValue: expense.category) ?? .other
-            items.append(RecordItem(
-                id: expense.id, emoji: category.emoji,
-                title: expense.note ?? expense.category,
-                subtitle: formatExpenseSubtitle(expense),
-                trailing: expense.signedDisplayAmount,
-                trailingColor: expense.type == "expense" ? "expense" : "income",
-                type: .expense, createdAt: expense.createdAt
-            ))
-        }
-        for record in habitRecords {
-            items.append(RecordItem(
-                id: record.id, emoji: "✓", title: habitNames[record.habitId] ?? "习惯",
-                subtitle: record.value ?? "已打卡", trailing: "✓",
-                trailingColor: "primary", type: .habit, createdAt: record.createdAt
-            ))
-        }
-        for todo in todos {
-            items.append(RecordItem(
-                id: todo.id, emoji: "📝", title: todo.content,
-                subtitle: formatTodoSubtitle(todo),
-                trailing: todo.isCompleted ? "✓" : "○",
-                trailingColor: todo.isCompleted ? "primary" : "hint",
-                type: .todo, createdAt: todo.createdAt
-            ))
-        }
-
-        items.sort { $0.createdAt > $1.createdAt }
-        self.recentRecords = Array(items.prefix(20))
     }
 
     // MARK: - 格式化

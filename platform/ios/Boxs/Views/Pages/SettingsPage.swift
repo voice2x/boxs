@@ -5,6 +5,7 @@ struct SettingsPage: View {
     @State private var authViewModel = AuthViewModel()
     @State private var showLoginSheet = false
     @State private var syncFailures = 0
+    @State private var pendingCount = 0
     @AppStorage("isDarkMode") private var isDarkMode = false
 
     @Environment(\.appColors) private var c
@@ -17,6 +18,9 @@ struct SettingsPage: View {
             if syncFailures > 0 {
                 AppDivider()
                 deadLetterBanner
+            } else if pendingCount > 0 {
+                AppDivider()
+                pendingBanner
             }
 
             AppDivider()
@@ -30,7 +34,10 @@ struct SettingsPage: View {
         .background(c.background)
         .navigationTitle("设置")
         .navigationBarTitleDisplayMode(.inline)
-        .task { syncFailures = await SyncEngine.shared.deadLetterCount() }
+        .task {
+            syncFailures = await SyncEngine.shared.deadLetterCount()
+            pendingCount = await SyncEngine.shared.pendingCount()
+        }
         .sheet(isPresented: $showLoginSheet) {
             loginSheet
         }
@@ -95,6 +102,18 @@ struct SettingsPage: View {
                 }
             }
             .buttonStyle(ActionButtonStyle(kind: .secondary))
+        }
+        .padding(S.page)
+    }
+
+    private var pendingBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .foregroundStyle(c.textSecondary)
+            Text("\(pendingCount) 条数据排队待发")
+                .font(.system(size: 13))
+                .foregroundStyle(c.textSecondary)
+            Spacer()
         }
         .padding(S.page)
     }
