@@ -322,6 +322,7 @@ pub async fn definition_changes(
     uid: uuid::Uuid,
     cursor: Option<Cursor>,
     limit: i64,
+    since: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Result<ChangesResponse<HabitDefinition>, AppError> {
     let limit = limit.clamp(1, 500);
     let fetch = limit + 1;
@@ -333,6 +334,13 @@ pub async fn definition_changes(
         ))
         .bind(uid).bind(c.updated_at).bind(c.id).bind(fetch)
         .fetch_all(pool).await?
+    } else if let Some(s) = &since {
+        sqlx::query_as::<_, HabitDefinition>(&format!(
+            "SELECT {HABIT_DEF_COLUMNS} FROM habit_definitions
+             WHERE user_id = $1 AND updated_at >= $2
+             ORDER BY updated_at ASC, id ASC LIMIT $3"
+        ))
+        .bind(uid).bind(s).bind(fetch).fetch_all(pool).await?
     } else {
         sqlx::query_as::<_, HabitDefinition>(&format!(
             "SELECT {HABIT_DEF_COLUMNS} FROM habit_definitions
@@ -432,7 +440,7 @@ mod def_sync_tests {
         let mut c = habit(uid, "2026-06-01T00:00:00Z");
         c.is_active = false;
         definition_batch(&pool, uid, BatchRequest { changes: vec![c.clone()] }).await.unwrap();
-        let resp = definition_changes(&pool, uid, None, 500).await.unwrap();
+        let resp = definition_changes(&pool, uid, None, 500, None).await.unwrap();
         assert!(resp.items.iter().any(|r| r.id == c.id && !r.is_active));
     }
 }
@@ -455,6 +463,7 @@ pub async fn checkin_changes(
     uid: uuid::Uuid,
     cursor: Option<Cursor>,
     limit: i64,
+    since: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Result<ChangesResponse<HabitRecord>, AppError> {
     let limit = limit.clamp(1, 500);
     let fetch = limit + 1;
@@ -465,6 +474,13 @@ pub async fn checkin_changes(
              ORDER BY updated_at ASC, id ASC LIMIT $4"
         ))
         .bind(uid).bind(c.updated_at).bind(c.id).bind(fetch).fetch_all(pool).await?
+    } else if let Some(s) = &since {
+        sqlx::query_as::<_, HabitRecord>(&format!(
+            "SELECT {HABIT_REC_COLUMNS} FROM habit_records
+             WHERE user_id = $1 AND updated_at >= $2
+             ORDER BY updated_at ASC, id ASC LIMIT $3"
+        ))
+        .bind(uid).bind(s).bind(fetch).fetch_all(pool).await?
     } else {
         sqlx::query_as::<_, HabitRecord>(&format!(
             "SELECT {HABIT_REC_COLUMNS} FROM habit_records

@@ -203,6 +203,7 @@ pub async fn changes(
     uid: uuid::Uuid,
     cursor: Option<Cursor>,
     limit: i64,
+    since: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Result<ChangesResponse<TodoRecord>, AppError> {
     let limit = limit.clamp(1, 500);
     let fetch = limit + 1;
@@ -213,6 +214,13 @@ pub async fn changes(
              ORDER BY updated_at ASC, id ASC LIMIT $4"
         ))
         .bind(uid).bind(c.updated_at).bind(c.id).bind(fetch).fetch_all(pool).await?
+    } else if let Some(s) = &since {
+        sqlx::query_as::<_, TodoRecord>(&format!(
+            "SELECT {TODO_COLUMNS} FROM todo_records
+             WHERE user_id = $1 AND updated_at >= $2
+             ORDER BY updated_at ASC, id ASC LIMIT $3"
+        ))
+        .bind(uid).bind(s).bind(fetch).fetch_all(pool).await?
     } else {
         sqlx::query_as::<_, TodoRecord>(&format!(
             "SELECT {TODO_COLUMNS} FROM todo_records
@@ -320,7 +328,7 @@ mod sync_tests {
             c.updated_at = Some(chrono::DateTime::from_timestamp(1_700_000_000 + i as i64, 0).unwrap());
             batch(&pool, uid, BatchRequest { changes: vec![c] }).await.unwrap();
         }
-        let p1 = changes(&pool, uid, None, 2).await.unwrap();
+        let p1 = changes(&pool, uid, None, 2, None).await.unwrap();
         assert_eq!(p1.items.len(), 2);
         assert!(p1.next_cursor.is_some());
     }

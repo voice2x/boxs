@@ -207,25 +207,25 @@ actor SyncEngine {
     func pull(entities: [String]) async {
         for e in entities {
             switch e {
-            case "expenses": await pullLoop(entity: "expenses", endpoint: { Endpoints.expenseChanges(cursor: $0) },
+            case "expenses": await pullLoop(entity: "expenses", endpoint: { Endpoints.expenseChanges(cursor: $0, since: $1) },
                                             keyFor: { (d: ExpenseDTO) in d.id }) { db, dto in
                 let rec = ExpenseMapper.toLocal(dto)
                 try db.execute(sql: "DELETE FROM expense_record WHERE id = ?", arguments: [rec.id])
                 var r = rec; try r.insert(db)
             }
-            case "todos": await pullLoop(entity: "todos", endpoint: { Endpoints.todoChanges(cursor: $0) },
+            case "todos": await pullLoop(entity: "todos", endpoint: { Endpoints.todoChanges(cursor: $0, since: $1) },
                                          keyFor: { (d: TodoDTO) in d.id }) { db, dto in
                 let rec = TodoMapper.toLocal(dto)
                 try db.execute(sql: "DELETE FROM todo_record WHERE id = ?", arguments: [rec.id])
                 var r = rec; try r.insert(db)
             }
-            case "habits": await pullLoop(entity: "habits", endpoint: { Endpoints.habitChanges(cursor: $0) },
+            case "habits": await pullLoop(entity: "habits", endpoint: { Endpoints.habitChanges(cursor: $0, since: $1) },
                                           keyFor: { (d: HabitDefinitionDTO) in d.id }) { db, dto in
                 let rec = HabitMapper.toLocal(dto)
                 try db.execute(sql: "DELETE FROM habit_definition WHERE id = ?", arguments: [rec.id])
                 var r = rec; try r.insert(db)
             }
-            case "habit_checkins": await pullLoop(entity: "habit_checkins", endpoint: { Endpoints.checkinChanges(cursor: $0) },
+            case "habit_checkins": await pullLoop(entity: "habit_checkins", endpoint: { Endpoints.checkinChanges(cursor: $0, since: $1) },
                                                   keyFor: { (d: HabitRecordDTO) in "\(d.habit_id)|\(d.record_date)" }) { db, dto in
                 var rec = HabitRecordMapper.toLocal(dto)
                 try HabitRecord.filter(Column("habitId") == rec.habitId && Column("recordDate") == rec.recordDate).deleteAll(db)
@@ -236,22 +236,30 @@ actor SyncEngine {
         }
     }
 
-    /// 翻页拉取直到 next_cursor == nil;每页用 applyBatch 批量应用后存新游标
+    /// 翻页拉取直到 next_cursor == nil;每页用 applyBatch 批量应用后存新游标。
+    /// 引导(cursor 为空)时传 since(近 12 个月),有界化首次同步。
     private func pullLoop<D: Decodable & Sendable>(
         entity: String,
-        endpoint: @escaping @Sendable (String?) -> Endpoint,
+        endpoint: @escaping @Sendable (String?, String?) -> Endpoint,
         keyFor: @escaping @Sendable (D) -> String,
         applyOne: @escaping @Sendable (Database, D) throws -> Void
     ) async {
         var cursor = await readCursor(entity)
         repeat {
+            let since = cursor == nil ? Self.bootstrapSince() : nil
             let resp: ChangesResponse<D>
-            do { resp = try await api.send(endpoint(cursor), body: nil) }
+            do { resp = try await api.send(endpoint(cursor, since), body: nil) }
             catch { logger.warning("pull \(entity) 失败: \(error.localizedDescription)"); return }
             await applyBatch(resp.items, entity: entity, keyFor: keyFor, applyOne: applyOne)
             cursor = resp.next_cursor
             await writeCursor(entity, cursor)
         } while cursor != nil
+    }
+
+    /// 引导窗口:近 12 个月
+    private static func bootstrapSince() -> String {
+        let d = Calendar.current.date(byAdding: .month, value: -12, to: Date()) ?? Date()
+        return formatISO8601(d)
     }
 
     /// 一页一次事务:批量取 pending key,跳过 pending 的(不覆盖未 drain 的本地编辑),其余批量 delete+insert

@@ -151,6 +151,7 @@ pub async fn complete_todo(
 pub struct ChangesQuery {
     pub cursor: Option<String>,
     pub limit: Option<i64>,
+    pub since: Option<String>, // ISO8601;仅引导(cursor 为空)时生效,限定 updated_at >= since
 }
 
 fn parse_cursor(q: &ChangesQuery) -> Result<Option<Cursor>, AppError> {
@@ -160,13 +161,20 @@ fn parse_cursor(q: &ChangesQuery) -> Result<Option<Cursor>, AppError> {
     }
 }
 
+fn parse_since(q: &ChangesQuery) -> Result<Option<chrono::DateTime<chrono::Utc>>, AppError> {
+    q.since
+        .as_deref()
+        .map(|s| chrono::DateTime::parse_from_rfc3339(s).map(|d| d.with_timezone(&chrono::Utc)).map_err(|e| AppError::BadRequest(e.to_string())))
+        .transpose()
+}
+
 pub async fn expense_changes(
     State(state): State<Arc<AppState>>,
     claims: VerifiedUser,
     axum::extract::Query(q): axum::extract::Query<ChangesQuery>,
 ) -> Result<Json<expense::ChangesResponseExpense>, AppError> {
     let uid = claims.uid()?;
-    let resp = expense::changes(&state.pool, uid, parse_cursor(&q)?, q.limit.unwrap_or(200)).await?;
+    let resp = expense::changes(&state.pool, uid, parse_cursor(&q)?, q.limit.unwrap_or(200), parse_since(&q)?).await?;
     Ok(Json(resp))
 }
 
@@ -186,7 +194,7 @@ pub async fn habit_changes(
     axum::extract::Query(q): axum::extract::Query<ChangesQuery>,
 ) -> Result<Json<crate::data::sync::ChangesResponse<habit::HabitDefinition>>, AppError> {
     let uid = claims.uid()?;
-    let resp = habit::definition_changes(&state.pool, uid, parse_cursor(&q)?, q.limit.unwrap_or(200)).await?;
+    let resp = habit::definition_changes(&state.pool, uid, parse_cursor(&q)?, q.limit.unwrap_or(200), parse_since(&q)?).await?;
     Ok(Json(resp))
 }
 
@@ -206,7 +214,7 @@ pub async fn checkin_changes(
     axum::extract::Query(q): axum::extract::Query<ChangesQuery>,
 ) -> Result<Json<crate::data::sync::ChangesResponse<habit::HabitRecord>>, AppError> {
     let uid = claims.uid()?;
-    let resp = habit::checkin_changes(&state.pool, uid, parse_cursor(&q)?, q.limit.unwrap_or(200)).await?;
+    let resp = habit::checkin_changes(&state.pool, uid, parse_cursor(&q)?, q.limit.unwrap_or(200), parse_since(&q)?).await?;
     Ok(Json(resp))
 }
 
@@ -226,7 +234,7 @@ pub async fn todo_changes(
     axum::extract::Query(q): axum::extract::Query<ChangesQuery>,
 ) -> Result<Json<crate::data::sync::ChangesResponse<todo::TodoRecord>>, AppError> {
     let uid = claims.uid()?;
-    let resp = todo::changes(&state.pool, uid, parse_cursor(&q)?, q.limit.unwrap_or(200)).await?;
+    let resp = todo::changes(&state.pool, uid, parse_cursor(&q)?, q.limit.unwrap_or(200), parse_since(&q)?).await?;
     Ok(Json(resp))
 }
 

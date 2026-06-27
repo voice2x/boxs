@@ -353,6 +353,7 @@ pub async fn changes(
     uid: uuid::Uuid,
     cursor: Option<Cursor>,
     limit: i64,
+    since: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Result<ChangesResponse<ExpenseRecord>, AppError> {
     let limit = limit.clamp(1, 500);
     let fetch = limit + 1;
@@ -365,6 +366,18 @@ pub async fn changes(
         .bind(uid)
         .bind(c.updated_at)
         .bind(c.id)
+        .bind(fetch)
+        .fetch_all(pool)
+        .await?
+    } else if let Some(s) = &since {
+        // 有界引导:仅拉 updated_at >= since
+        sqlx::query_as::<_, ExpenseRecord>(&format!(
+            "SELECT {EXPENSE_COLUMNS} FROM expense_records
+             WHERE user_id = $1 AND updated_at >= $2
+             ORDER BY updated_at ASC, id ASC LIMIT $3"
+        ))
+        .bind(uid)
+        .bind(s)
         .bind(fetch)
         .fetch_all(pool)
         .await?
@@ -539,7 +552,7 @@ mod sync_tests {
         c.deleted_at = Some(chrono::DateTime::parse_from_rfc3339("2026-06-05T00:00:00Z").unwrap().with_timezone(&chrono::Utc));
         c.updated_at = c.deleted_at;
         batch(&pool, uid, BatchRequest { changes: vec![c.clone()] }).await.unwrap();
-        let resp = changes(&pool, uid, None, 500).await.unwrap();
+        let resp = changes(&pool, uid, None, 500, None).await.unwrap();
         assert!(resp.items.iter().any(|r| r.id == c.id && r.deleted_at.is_some()));
     }
 
@@ -552,10 +565,10 @@ mod sync_tests {
             c.updated_at = Some(chrono::DateTime::from_timestamp(1_700_000_000 + i as i64, 0).unwrap());
             batch(&pool, uid, BatchRequest { changes: vec![c] }).await.unwrap();
         }
-        let p1 = changes(&pool, uid, None, 2).await.unwrap();
+        let p1 = changes(&pool, uid, None, 2, None).await.unwrap();
         assert_eq!(p1.items.len(), 2);
         assert!(p1.next_cursor.is_some());
-        let p2 = changes(&pool, uid, Cursor::decode(p1.next_cursor.as_deref().unwrap()).ok(), 2).await.unwrap();
+        let p2 = changes(&pool, uid, Cursor::decode(p1.next_cursor.as_deref().unwrap()).ok(), 2, None).await.unwrap();
         let ids: Vec<_> = p1.items.iter().map(|r| r.id).collect();
         assert!(p2.items.iter().all(|r| !ids.contains(&r.id)), "页间不应重叠");
     }
