@@ -75,7 +75,7 @@ async fn handle_relay(client_ws: WebSocket, claims: VerifiedUser, state: Arc<App
     let conn_id = state.inc_ws();
     info!(conn_id, "WebSocket 连接建立");
 
-    let mut upstream = match XfyunUpstream::connect(
+    let upstream = match XfyunUpstream::connect(
         &state.config.xfyun_app_id,
         &state.config.xfyun_api_key,
         &state.config.xfyun_api_secret,

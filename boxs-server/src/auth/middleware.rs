@@ -6,7 +6,7 @@ use axum::{
     response::Response,
 };
 use std::sync::Arc;
-use crate::auth::jwt::{self, VerifiedUser};
+use crate::auth::jwt;
 use crate::error::AppError;
 use crate::state::AppState;
 

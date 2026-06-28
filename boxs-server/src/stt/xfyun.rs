@@ -28,11 +28,11 @@ pub struct XfyunUpstream {
 impl XfyunUpstream {
     /// 建立到讯飞的 WebSocket 连接（带签名鉴权）
     pub async fn connect(
-        app_id: &str,
+        _app_id: &str,
         api_key: &str,
         api_secret: &str,
-        language: &str,
-        accent: &str,
+        _language: &str,
+        _accent: &str,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let auth_url = build_auth_url(api_key, api_secret)?;
 
